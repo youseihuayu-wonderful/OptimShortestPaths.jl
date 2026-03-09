@@ -1,15 +1,17 @@
 name = "OptimShortestPaths"
 uuid = "665f6718-e944-491c-97a0-bc01f3ed948a"
-authors = ["Tianchi Chen <chentianchi@gmail.com>"]
 version = "1.1.0"
+authors = ["Tianchi Chen <chentianchi@gmail.com>"]
 
 [deps]
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 DocumenterTools = "35a29f4d-8980-5a13-9543-d66fff28ecb8"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 
 [compat]
 DataStructures = "0.18"
 DocumenterTools = "0.1.20"
+JSON = "1.4.0"
 julia = "1.9"
 
 [extras]

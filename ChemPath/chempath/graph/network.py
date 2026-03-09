@@ -208,6 +208,7 @@ def build_multihop_graph(
 
         G.add_edge(cid, tid,
                    edge_type="compound_target",
+                   weight=logcost["w_efficacy"],
                    ic50_nm=ic50,
                    **prob.to_dict(),
                    **logcost,
@@ -230,6 +231,7 @@ def build_multihop_graph(
 
         G.add_edge(src, tgt,
                    edge_type="target_pathway",
+                   weight=logcost["w_efficacy"],
                    role=edge.get("role", ""),
                    biological_evidence=edge.get("evidence", ""),
                    **prob.to_dict(),
@@ -252,6 +254,7 @@ def build_multihop_graph(
 
         G.add_edge(src, tgt,
                    edge_type="pathway_disease",
+                   weight=logcost["w_efficacy"],
                    biological_evidence=edge.get("evidence", ""),
                    **prob.to_dict(),
                    **logcost)
@@ -276,6 +279,7 @@ def build_multihop_graph(
 
         G.add_edge(src, tgt,
                    edge_type="ppi",
+                   weight=logcost["w_efficacy"],
                    ppi_type=ppi_type,
                    biological_evidence=edge.get("evidence", ""),
                    **prob.to_dict(),
@@ -286,6 +290,7 @@ def build_multihop_graph(
         if edge.get("bidirectional", False):
             G.add_edge(tgt, src,
                        edge_type="ppi",
+                       weight=logcost["w_efficacy"],
                        ppi_type=ppi_type,
                        biological_evidence=edge.get("evidence", ""),
                        **prob.to_dict(),

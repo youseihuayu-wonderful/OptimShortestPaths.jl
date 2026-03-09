@@ -204,6 +204,11 @@ TARGET_PATHWAY_EDGES = [
     {"source": "CHEMBL2185", "target": "PATH_PI3K_AKT", "weight": 0.3, "role": "downstream_effector", "evidence": "AKT→mTOR→S6K/4EBP1"},
     {"source": "CHEMBL2185", "target": "PATH_CELL_CYCLE", "weight": 0.5, "role": "growth_regulator", "evidence": "mTOR→S6K→cell growth"},
     {"source": "CHEMBL2185", "target": "PATH_APOPTOSIS", "weight": 0.7, "role": "survival_signal", "evidence": "mTOR→autophagy regulation"},
+
+    # KIT (CHEMBL1936) — stem cell factor receptor, drives GIST and AML
+    {"source": "CHEMBL1936", "target": "PATH_MAPK", "weight": 0.5, "role": "upstream_activator", "evidence": "KIT→RAS→RAF→MEK→ERK"},
+    {"source": "CHEMBL1936", "target": "PATH_PI3K_AKT", "weight": 0.5, "role": "upstream_activator", "evidence": "KIT→PI3K→AKT survival signaling"},
+    {"source": "CHEMBL1936", "target": "PATH_APOPTOSIS", "weight": 0.6, "role": "survival_signal", "evidence": "KIT→AKT→BAD anti-apoptotic"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -251,6 +256,10 @@ PATHWAY_DISEASE_EDGES = [
     # BCR-ABL → CML (very strong, nearly 1:1)
     {"source": "PATH_BCR_ABL", "target": "DIS_CML", "weight": 0.1, "evidence": "BCR-ABL fusion defines CML (Philadelphia chromosome)"},
     {"source": "PATH_BCR_ABL", "target": "DIS_GIST", "weight": 0.7, "evidence": "ABL-related kinase signaling in some GIST"},
+
+    # MAPK/PI3K → GIST (KIT-driven signaling in 85% of GIST)
+    {"source": "PATH_MAPK", "target": "DIS_GIST", "weight": 0.4, "evidence": "KIT→RAS→MAPK activation in 85% of GIST"},
+    {"source": "PATH_PI3K_AKT", "target": "DIS_GIST", "weight": 0.5, "evidence": "KIT→PI3K survival signaling in GIST"},
 
     # Apoptosis → pan-cancer
     {"source": "PATH_APOPTOSIS", "target": "DIS_CML", "weight": 0.5, "evidence": "BCR-ABL blocks apoptosis"},
