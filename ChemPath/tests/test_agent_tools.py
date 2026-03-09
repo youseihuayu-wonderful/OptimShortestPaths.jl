@@ -107,7 +107,7 @@ class TestGetCompoundInfo:
 
 class TestCompareSelectivity:
     def test_selectivity_with_off_targets(self, executor):
-        # CHEMBL1336 (Lapatinib) hits both EGFR and HER2 in mock data
+        # CHEMBL1336 (Sorafenib) hits VEGFR2 and BRAF in curated data
         # In real data, find a compound that hits multiple targets
         result = executor.execute("compare_selectivity", {
             "compound": "SIROLIMUS", "primary_target": "VEGFR2"

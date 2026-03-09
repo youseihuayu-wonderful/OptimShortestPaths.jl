@@ -2,7 +2,7 @@
 
 import math
 import pytest
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.graph.builder import (
     ic50_to_weight,
     build_drug_target_graph,
@@ -41,7 +41,7 @@ class TestIC50ToWeight:
 class TestBuildGraph:
     @pytest.fixture
     def data(self):
-        return load_mock_data()
+        return load_curated_data()
 
     @pytest.fixture
     def graph(self, data):
@@ -49,12 +49,12 @@ class TestBuildGraph:
 
     def test_node_counts(self, graph):
         summary = get_graph_summary(graph)
-        assert summary["compounds"] == 8  # 10 - 2 invalid
-        assert summary["targets"] == 4
+        assert summary["compounds"] == 18  # 20 - 2 invalid SMILES
+        assert summary["targets"] == 11
 
     def test_edge_count(self, graph):
         summary = get_graph_summary(graph)
-        assert summary["experimental_edges"] == 12
+        assert summary["experimental_edges"] == 27
         assert summary["predicted_edges"] == 0
 
     def test_rejects_invalid_smiles(self, graph):
@@ -70,8 +70,9 @@ class TestBuildGraph:
     def test_toxicity_penalty_applied(self, data):
         g0 = build_drug_target_graph(data, toxicity_penalty=0.0, verbose=False)
         g5 = build_drug_target_graph(data, toxicity_penalty=5.0, verbose=False)
-        w0 = g0.edges["CHEMBL1336", "CHEMBL203"]["weight"]
-        w5 = g5.edges["CHEMBL1336", "CHEMBL203"]["weight"]
+        # Sorafenib (CHEMBL1336) → BRAF (CHEMBL5145)
+        w0 = g0.edges["CHEMBL1336", "CHEMBL5145"]["weight"]
+        w5 = g5.edges["CHEMBL1336", "CHEMBL5145"]["weight"]
         assert w5 > w0  # higher penalty → higher weight
 
     def test_compound_node_attributes(self, graph):
@@ -88,7 +89,7 @@ class TestBuildGraph:
 
 class TestAddPredictedEdges:
     def test_adds_predicted_edge(self):
-        data = load_mock_data()
+        data = load_curated_data()
         G = build_drug_target_graph(data, verbose=False)
         predictions = [
             {"compound": "CHEMBL1201585", "target": "CHEMBL4282", "predicted_ic50": 50.0}
@@ -99,7 +100,7 @@ class TestAddPredictedEdges:
         assert edge["source"] == "predicted"
 
     def test_does_not_overwrite_experimental(self):
-        data = load_mock_data()
+        data = load_curated_data()
         G = build_drug_target_graph(data, verbose=False)
         original_weight = G.edges["CHEMBL1201585", "CHEMBL203"]["weight"]
         predictions = [

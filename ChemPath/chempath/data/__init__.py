@@ -1,4 +1,4 @@
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.data.loader import get_compound_by_name, get_target_by_name
 from chempath.data.chembl_client import (
     fetch_real_data,
@@ -9,7 +9,7 @@ from chempath.data.chembl_client import (
 )
 
 __all__ = [
-    "load_mock_data",
+    "load_curated_data",
     "get_compound_by_name",
     "get_target_by_name",
     "fetch_real_data",

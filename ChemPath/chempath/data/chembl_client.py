@@ -222,7 +222,7 @@ def fetch_real_data(
 ) -> dict:
     """
     Fetch real ChEMBL data for multiple targets.
-    Returns data in the same format as load_mock_data().
+    Returns data in the same format as load_curated_data().
     """
     if targets is None:
         targets = ANTICANCER_TARGETS

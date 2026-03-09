@@ -2,7 +2,7 @@
 
 import math
 import pytest
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.graph.network import (
     EdgeProbability,
     ic50_to_efficacy_prob,
@@ -33,13 +33,13 @@ from chempath.graph.julia_bridge import JuliaBridge, DMYResult, JULIA_BINARY
 # ===================================================================
 
 @pytest.fixture
-def mock_data():
-    return load_mock_data()
+def curated_data():
+    return load_curated_data()
 
 
 @pytest.fixture
-def graph(mock_data):
-    return build_multihop_graph(mock_data, verbose=False)
+def graph(curated_data):
+    return build_multihop_graph(curated_data, verbose=False)
 
 
 # ===================================================================
@@ -240,7 +240,7 @@ class TestPathfinding:
                     assert "safety" in p.costs_by_dim
                     assert "evidence" in p.costs_by_dim
                     return
-        pytest.skip("No paths found in mock data")
+        pytest.skip("No paths found in curated data")
 
     def test_nonexistent_source(self, graph):
         paths = find_shortest_paths(graph, "FAKE_ID", "DIS_NSCLC")
@@ -287,7 +287,7 @@ class TestMoA:
                     assert result.primary_mechanism is not None
                     assert len(result.paths) >= 1
                     return
-        pytest.skip("No MoA found in mock data")
+        pytest.skip("No MoA found in curated data")
 
     def test_nonexistent_pair(self, graph):
         result = find_mechanism_of_action(graph, "FAKE", "FAKE2")
@@ -343,7 +343,7 @@ class TestBenchmark:
         assert 0.3 < result.enrichment_factor < 2.5
 
     def test_multihop_runs(self, graph):
-        """Multi-hop benchmark should run without errors on mock data."""
+        """Multi-hop benchmark should run without errors on curated data."""
         result = run_multihop_benchmark(graph, k_values=[1, 3, 5])
         assert result.n_drugs >= 0
         assert 0 <= result.mrr <= 1.0

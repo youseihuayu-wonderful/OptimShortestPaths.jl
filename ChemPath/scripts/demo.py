@@ -3,7 +3,7 @@ ChemPath Demo — Full Pipeline
 Runs: data → validate → graph → optimize → sensitivity analysis.
 """
 
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.chemistry.smiles import validate_batch
 from chempath.graph.builder import build_drug_target_graph, get_graph_summary
 from chempath.graph.optimizer import (
@@ -19,8 +19,8 @@ def main():
     print("=" * 70)
 
     # Step 1: Load Data
-    print("\n[Step 1] Loading mock ChEMBL data...")
-    data = load_mock_data()
+    print("\n[Step 1] Loading curated ChEMBL data...")
+    data = load_curated_data()
     print(f"  Loaded {len(data['compounds'])} compounds, {len(data['targets'])} targets, "
           f"{len(data['bioactivities'])} bioactivities")
 

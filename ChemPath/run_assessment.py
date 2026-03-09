@@ -18,7 +18,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(__file__))
 
 import networkx as nx
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.graph.network import build_multihop_graph, get_multihop_summary
 from chempath.graph.pathfinding import (
     find_repurposing_candidates, find_mechanism_of_action,
@@ -37,7 +37,7 @@ def main():
     print("=" * 80)
 
     # Build graph
-    data = load_mock_data()
+    data = load_curated_data()
     G = build_multihop_graph(data, verbose=False)
     summary = get_multihop_summary(G)
 

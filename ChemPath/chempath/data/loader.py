@@ -1,6 +1,6 @@
 """
 Unified data loading interface.
-Currently wraps mock data; will add ChEMBL REST API client later.
+Supports curated reference data and live ChEMBL REST API queries.
 """
 
 

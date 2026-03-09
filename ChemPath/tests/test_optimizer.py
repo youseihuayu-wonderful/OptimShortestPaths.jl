@@ -1,7 +1,7 @@
 """Tests for ranking, Pareto front, confidence, and sensitivity."""
 
 import pytest
-from chempath.data.mock_data import load_mock_data
+from chempath.data.curated_data import load_curated_data
 from chempath.graph.builder import build_drug_target_graph
 from chempath.graph.optimizer import (
     assign_confidence,
@@ -19,7 +19,7 @@ from chempath.graph.analysis import (
 
 @pytest.fixture
 def data():
-    return load_mock_data()
+    return load_curated_data()
 
 
 @pytest.fixture
