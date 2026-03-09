@@ -64,9 +64,13 @@ Represents a partitioned block of vertices for recursive processing.
 """
 struct Block
     vertices::Vector{Int}
+    vertex_set::Set{Int}       # O(1) membership lookup
     frontier::OrderedSet{Int}
     upper_bound::Float64
 end
+
+Block(vertices::Vector{Int}, frontier::OrderedSet{Int}, upper_bound::Float64) =
+    Block(vertices, Set(vertices), frontier, upper_bound)
 
 """
     PharmaNetwork
