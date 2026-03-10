@@ -170,6 +170,11 @@ julia --project=. test/runtests.jl
 
 1,800+ assertions covering algorithm correctness, multi-objective optimization, domain applications, and edge cases.
 
+## Documentation
+
+Complete documentation with examples and API reference:
+https://danielchen26.github.io/OptimShortestPaths.jl/stable/
+
 ## References
 
 [1] Duan, R., Mao, J., Yin, H., & Zhou, H. (2025). "Breaking the Dijkstra Barrier for Directed Single-Source Shortest-Paths via Structured Distances". *Proceedings of the 57th Annual ACM Symposium on Theory of Computing (STOC 2025)*.
