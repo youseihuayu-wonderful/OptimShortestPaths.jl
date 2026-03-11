@@ -40,3 +40,12 @@ docs/src/examples/*/figures/
 
 # Streamlit app (lives on streamlit_app branch)
 streamlit_app/
+
+# IDE plugins and session data
+.claude-plugin/
+config.json
+events.jsonl
+views.json
+labels/
+sessions/
+statuses/
