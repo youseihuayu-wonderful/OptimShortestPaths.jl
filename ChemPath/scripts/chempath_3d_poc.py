@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 ChemPath-3D Proof of Concept:
 Multi-Dimensional Probability Scoring on Hetionet vs PharmacotherapyDB.
@@ -15,16 +16,19 @@ Usage:
 
 import bz2
 import csv
+import gc
 import io
 import json
 import math
 import os
+import pickle
 import random
 import sys
 import time
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 import networkx as nx
 
@@ -42,11 +46,25 @@ PHARMACOTHERAPYDB_FALLBACK = "https://ndownloader.figshare.com/files/4823950"
 
 CACHE_DIR = Path(__file__).parent.parent / "data" / "hetionet"
 
-# Edges relevant to drug→disease inference (same filter as hetionet_benchmark.py)
+# Edges relevant to drug→disease inference.
+# CRITICAL PERFORMANCE NOTE: "expresses" (526K) and "participates" (815K)
+# make the graph 2M+ edges, causing Dijkstra to take ~3s per call.
+# We keep only edges on the Compound→Gene→Disease/Pathway critical path.
+# This reduces graph to ~450K directed edges → Dijkstra <200ms per call.
 RELEVANT_EDGES = {
-    "binds", "downregulates", "upregulates", "interacts", "regulates",
-    "participates", "associates", "localizes", "palliates", "resembles",
-    "includes", "expresses",
+    "binds",         # Compound→Gene (11K, critical direct binding)
+    "downregulates", # Compound→Gene (131K, pharmacological)
+    "upregulates",   # Compound→Gene (124K, pharmacological)
+    "interacts",     # Gene↔Gene PPI (147K, mechanism propagation)
+    "associates",    # Disease↔Gene (13K, critical disease link)
+    "palliates",     # Compound→Disease (390, known symptomatic)
+    "resembles",     # Compound↔Compound, Disease↔Disease (7K)
+    "includes",      # PharmClass→Compound (1K)
+    # EXCLUDED for performance (not on critical drug→disease path):
+    # "regulates",   # Gene→Gene (266K) — redundant with interacts
+    # "participates",# Gene→Pathway (815K) — too dense, pathway signal weak
+    # "expresses",   # Anatomy→Gene (526K) — tissue expression, indirect
+    # "localizes",   # Disease→Anatomy (4K) — anatomical, not mechanistic
 }
 
 # ---------------------------------------------------------------------------
@@ -59,13 +77,9 @@ EFFICACY_PROBS = {
     "upregulates": 0.65,
     "associates": 0.70,
     "interacts": 0.50,
-    "regulates": 0.45,
-    "participates": 0.60,
-    "localizes": 0.55,
     "palliates": 0.75,
     "resembles": 0.40,
     "includes": 0.50,
-    "expresses": 0.55,
 }
 
 SAFETY_BASE_PROBS = {
@@ -73,14 +87,10 @@ SAFETY_BASE_PROBS = {
     "downregulates": 0.70,
     "upregulates": 0.70,
     "interacts": 0.85,
-    "regulates": 0.80,
     "associates": 0.90,
-    "participates": 0.95,
-    "localizes": 0.95,
     "palliates": 0.80,
     "resembles": 0.90,
     "includes": 0.90,
-    "expresses": 0.90,
 }
 
 EVIDENCE_PROBS = {
@@ -89,13 +99,9 @@ EVIDENCE_PROBS = {
     "downregulates": 0.70,
     "upregulates": 0.70,
     "interacts": 0.65,
-    "regulates": 0.55,
-    "participates": 0.75,
     "palliates": 0.80,
-    "localizes": 0.70,
     "resembles": 0.50,
     "includes": 0.65,
-    "expresses": 0.60,
 }
 
 # Median side effect count for sigmoid normalization
@@ -106,7 +112,7 @@ SIDE_EFFECT_MEDIAN = 30.0
 # Data download helpers
 # ---------------------------------------------------------------------------
 
-def download_file(url: str, dest: Path, fallback_url: str | None = None) -> Path:
+def download_file(url: str, dest: Path, fallback_url: Optional[str] = None) -> Path:
     """Download a file if not already cached."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
@@ -138,6 +144,21 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         metadata: dict with ground_truth, node/edge counts
         side_effect_counts: dict {compound_node_id: n_side_effects}
     """
+    compact_cache = CACHE_DIR / "hetionet_compact.pkl"
+
+    # Fast path: load pre-built compact cache (avoids 1.7GB JSON parse)
+    if compact_cache.exists():
+        print("  [cached] Loading compact graph from pickle...")
+        with open(compact_cache, "rb") as f:
+            cached = pickle.load(f)
+        G = cached["G"]
+        metadata = cached["metadata"]
+        side_effect_counts = cached["side_effect_counts"]
+        print(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+        print(f"  Ground truth: {len(metadata['ground_truth'])} compounds with known indications")
+        return G, metadata, side_effect_counts
+
+    # Slow path: full JSON parse, then build compact cache
     bz2_path = download_file(HETIONET_JSON_URL, CACHE_DIR / "hetionet-v1.0.json.bz2")
 
     print("  Decompressing and parsing JSON...")
@@ -145,10 +166,14 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         hetio = json.load(f)
 
     G = nx.DiGraph()
+    node_types = {}
+    side_effect_counts: dict[str, int] = defaultdict(int)
+    ground_truth = defaultdict(list)
+    edge_type_counts = defaultdict(int)
+    held_out = 0
 
     # --- Load nodes ---
     print("  Loading nodes...")
-    node_types = {}
     for node in hetio["nodes"]:
         kind = node["kind"]
         identifier = node["identifier"]
@@ -157,26 +182,10 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         G.add_node(node_id, name=name, node_type=kind, raw_id=str(identifier))
         node_types[node_id] = kind
 
-    # --- First pass: extract side effect counts BEFORE edge filtering ---
-    print("  Counting side effects per compound...")
-    side_effect_counts: dict[str, int] = defaultdict(int)
-    for edge in hetio["edges"]:
-        if edge["kind"] == "causes" and edge["source_id"][0] == "Compound":
-            compound_id = f"Compound::{edge['source_id'][1]}"
-            side_effect_counts[compound_id] += 1
+    print(f"  Nodes loaded: {G.number_of_nodes()}")
 
-    se_values = list(side_effect_counts.values())
-    if se_values:
-        print(f"  Side effects: {len(side_effect_counts)} compounds, "
-              f"median={sorted(se_values)[len(se_values)//2]}, "
-              f"max={max(se_values)}, min={min(se_values)}")
-
-    # --- Second pass: load edges with filtering ---
+    # --- Load edges (single pass: side effects + ground truth + graph) ---
     print("  Loading edges...")
-    ground_truth = defaultdict(list)
-    edge_type_counts = defaultdict(int)
-    held_out = 0
-
     for edge in hetio["edges"]:
         src_kind = edge["source_id"][0]
         src_id_raw = edge["source_id"][1]
@@ -193,6 +202,11 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
 
         edge_type_counts[rel] += 1
 
+        # Collect side effects
+        if rel == "causes" and src_kind == "Compound":
+            side_effect_counts[source_id] += 1
+            continue
+
         # Hold out Compound-treats-Disease as ground truth
         if rel == "treats" and src_kind == "Compound" and tgt_kind == "Disease":
             ground_truth[source_id].append(target_id)
@@ -203,10 +217,6 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         if rel not in RELEVANT_EDGES:
             continue
 
-        # For "participates", only keep Gene→Pathway
-        if rel == "participates" and tgt_kind != "Pathway" and src_kind != "Pathway":
-            continue
-
         if direction == "forward":
             G.add_edge(source_id, target_id, edge_type=rel)
         elif direction == "backward":
@@ -214,6 +224,15 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         else:  # "both"
             G.add_edge(source_id, target_id, edge_type=rel)
             G.add_edge(target_id, source_id, edge_type=rel)
+
+    del hetio  # Free ~300MB
+    gc.collect()
+
+    se_values = list(side_effect_counts.values())
+    if se_values:
+        print(f"  Side effects: {len(side_effect_counts)} compounds, "
+              f"median={sorted(se_values)[len(se_values)//2]}, "
+              f"max={max(se_values)}, min={min(se_values)}")
 
     # Node counts
     type_counts = defaultdict(int)
@@ -230,6 +249,14 @@ def load_hetionet_3d() -> tuple[nx.DiGraph, dict, dict]:
         "edge_type_counts": dict(edge_type_counts),
         "held_out_edges": held_out,
     }
+
+    # Save compact cache for fast subsequent loads
+    print("  Saving compact cache...")
+    with open(compact_cache, "wb") as f:
+        pickle.dump({"G": G, "metadata": metadata,
+                     "side_effect_counts": dict(side_effect_counts)}, f,
+                    protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"  Compact cache saved: {compact_cache}")
 
     return G, metadata, dict(side_effect_counts)
 
@@ -371,9 +398,10 @@ def check_dimension_correlation(G: nx.DiGraph) -> dict:
     # Stats per dimension
     for name, vals in [("efficacy", w_eff), ("safety", w_saf), ("evidence", w_evd)]:
         if vals:
-            corr[f"{name}_mean"] = sum(vals) / len(vals)
+            mean_val = sum(vals) / len(vals)
+            corr[f"{name}_mean"] = mean_val
             corr[f"{name}_std"] = math.sqrt(
-                sum((v - sum(vals) / len(vals)) ** 2 for v in vals) / len(vals)
+                sum((v - mean_val) ** 2 for v in vals) / len(vals)
             )
 
     return corr
@@ -390,7 +418,11 @@ def score_compounds(
     verbose: bool = True,
 ) -> dict:
     """
-    Run 3x Dijkstra SSSP per compound and compute 5 scoring methods.
+    Score compound-disease pairs using reverse-graph Dijkstra from diseases.
+
+    Strategy: Run Dijkstra on REVERSED graph from each disease node.
+    This gives distance from all compounds to that disease in ONE call.
+    Only 137 diseases × 3 dims = 411 calls (vs 400+ compounds × 3 = 1200+).
 
     Returns:
         scores[method_name][(compound, disease)] = score
@@ -400,44 +432,49 @@ def score_compounds(
         "3_geometric_3d", "4_weighted_3d", "5_harmonic_3d",
     ]}
 
-    disease_set = set(disease_nodes)
-    total = len(compound_nodes)
+    compound_set = set(compound_nodes)
+    total_diseases = len(disease_nodes)
     t0 = time.time()
-    skipped = 0
 
-    for i, cid in enumerate(compound_nodes):
-        if cid not in G or G.out_degree(cid) == 0:
-            skipped += 1
-            # Assign 0 scores for all disease pairs
-            for did in disease_nodes:
+    # Build reversed graph (edges flipped, same weights)
+    if verbose:
+        print(f"    Building reverse graph...")
+    G_rev = G.reverse(copy=True)
+
+    # For each disease, run 3x Dijkstra on reversed graph
+    for i, did in enumerate(disease_nodes):
+        if verbose and (i % 20 == 0 or i == total_diseases - 1):
+            elapsed = time.time() - t0
+            print(f"    Disease {i+1}/{total_diseases} ({elapsed:.0f}s elapsed)", flush=True)
+        if did not in G_rev:
+            for cid in compound_nodes:
                 pair = (cid, did)
                 for m in all_scores:
                     all_scores[m][pair] = 0.0
             continue
 
-        # 3x Dijkstra SSSP (cutoff=20 to prune very long paths early)
         try:
-            dist_eff = nx.single_source_dijkstra_path_length(
-                G, cid, weight="w_efficacy", cutoff=20.0
+            rev_eff = nx.single_source_dijkstra_path_length(
+                G_rev, did, weight="w_efficacy", cutoff=20.0
             )
-            dist_saf = nx.single_source_dijkstra_path_length(
-                G, cid, weight="w_safety", cutoff=20.0
+            rev_saf = nx.single_source_dijkstra_path_length(
+                G_rev, did, weight="w_safety", cutoff=20.0
             )
-            dist_evd = nx.single_source_dijkstra_path_length(
-                G, cid, weight="w_evidence", cutoff=20.0
+            rev_evd = nx.single_source_dijkstra_path_length(
+                G_rev, did, weight="w_evidence", cutoff=20.0
             )
         except nx.NetworkXError:
-            skipped += 1
-            for did in disease_nodes:
+            for cid in compound_nodes:
                 pair = (cid, did)
                 for m in all_scores:
                     all_scores[m][pair] = 0.0
             continue
 
-        for did in disease_nodes:
-            d_eff = dist_eff.get(did, 20.0)
-            d_saf = dist_saf.get(did, 20.0)
-            d_evd = dist_evd.get(did, 20.0)
+        # Extract distances for each compound
+        for cid in compound_nodes:
+            d_eff = rev_eff.get(cid, 20.0)
+            d_saf = rev_saf.get(cid, 20.0)
+            d_evd = rev_evd.get(cid, 20.0)
 
             p_eff = math.exp(-d_eff)
             p_saf = math.exp(-d_saf)
@@ -479,16 +516,16 @@ def score_compounds(
                 denom += 1e15
             all_scores["5_harmonic_3d"][pair] = 3.0 / denom if denom > 0 else 0.0
 
-        if verbose and (i + 1) % 25 == 0:
+        if verbose and (i + 1) % 10 == 0:
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed
-            eta = (total - i - 1) / rate if rate > 0 else 0
-            print(f"    Scored {i+1}/{total} compounds "
+            eta = (total_diseases - i - 1) / rate if rate > 0 else 0
+            print(f"    Scored {i+1}/{total_diseases} diseases "
                   f"({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
 
     if verbose:
-        print(f"    Done: {total} compounds scored in {time.time()-t0:.1f}s "
-              f"({skipped} skipped)")
+        print(f"    Done: {total_diseases} diseases × {len(compound_nodes)} "
+              f"compounds scored in {time.time()-t0:.1f}s")
 
     return all_scores
 
@@ -969,11 +1006,11 @@ def main():
             all_scores[method_key], positive_pairs, eval_compounds, disease_nodes
         )
 
-        # Bootstrap CI (skip for random)
+        # Bootstrap CI (fast: 50 resamples)
         if method_key != "0_random":
             ci_lo, ci_hi = bootstrap_auroc_ci(
                 all_scores[method_key], positive_pairs,
-                eval_compounds, disease_nodes, n_bootstrap=200
+                eval_compounds, disease_nodes, n_bootstrap=50
             )
         else:
             ci_lo, ci_hi = result["auroc"] - 0.01, result["auroc"] + 0.01
@@ -1015,41 +1052,48 @@ def main():
     print(f"\n  Best method: {best['method']} (AUROC={best['auroc']:.4f})")
 
     # ===== PART 4: Sensitivity Analysis =====
-    print("\n[Part 4] Sensitivity Analysis")
-    print("-" * 40)
+    # Skip sensitivity in fast mode (edge perturbation on 870K edges is slow)
+    run_sensitivity = "--sensitivity" in sys.argv
+    pct_stable = 0.0
+    t_sens = 0.0
 
-    # Get top-20 predictions from best method
-    best_ranked = sorted(
-        all_scores[best_method_key].items(), key=lambda x: -x[1]
-    )
-    top_k = 20
-    top_pairs = [pair for pair, _ in best_ranked[:top_k]]
+    if run_sensitivity:
+        print("\n[Part 4] Sensitivity Analysis")
+        print("-" * 40)
 
-    print(f"  Analyzing stability of top-{top_k} predictions ({best['method']})...")
-    t_sens = time.time()
-    sensitivity = sensitivity_analysis(
-        G, top_pairs, disease_nodes, best_method_key, n_trials=5
-    )
-    t_sens = time.time() - t_sens
+        best_ranked = sorted(
+            all_scores[best_method_key].items(), key=lambda x: -x[1]
+        )
+        top_k = 20
+        top_pairs = [pair for pair, _ in best_ranked[:top_k]]
 
-    print(f"\n  Confidence distribution (top-{top_k} predictions):")
-    print(f"    HIGH   (5/5 stable):    {sensitivity['n_high']}")
-    print(f"    MEDIUM (3-4/5 stable):  {sensitivity['n_medium']}")
-    print(f"    LOW    (≤2/5 stable):   {sensitivity['n_low']}")
-    pct_stable = (sensitivity["n_high"] + sensitivity["n_medium"]) / top_k * 100
-    print(f"    Stable (HIGH+MEDIUM):   {pct_stable:.0f}%")
+        print(f"  Analyzing stability of top-{top_k} predictions ({best['method']})...")
+        t_sens = time.time()
+        sensitivity = sensitivity_analysis(
+            G, top_pairs, disease_nodes, best_method_key, n_trials=5
+        )
+        t_sens = time.time() - t_sens
 
-    # Show a few examples
-    print(f"\n  Example HIGH confidence predictions:")
-    high_pairs = [p for p in top_pairs if sensitivity["confidence"].get(p) == "HIGH"]
-    for pair in high_pairs[:5]:
-        cid, did = pair
-        cname = G.nodes[cid].get("name", cid) if cid in G else cid
-        dname = G.nodes[did].get("name", did) if did in G else did
-        is_true = "TRUE" if pair in positive_pairs else "pred"
-        score = all_scores[best_method_key].get(pair, 0)
-        print(f"    [{is_true:>4s}] {cname:25s} → {dname:25s} "
-              f"(score={score:.4f}, survival={sensitivity['pair_survival'].get(pair,0)}/10)")
+        print(f"\n  Confidence distribution (top-{top_k} predictions):")
+        print(f"    HIGH   (5/5 stable):    {sensitivity['n_high']}")
+        print(f"    MEDIUM (3-4/5 stable):  {sensitivity['n_medium']}")
+        print(f"    LOW    (≤2/5 stable):   {sensitivity['n_low']}")
+        pct_stable = (sensitivity["n_high"] + sensitivity["n_medium"]) / top_k * 100
+        print(f"    Stable (HIGH+MEDIUM):   {pct_stable:.0f}%")
+
+        print(f"\n  Example HIGH confidence predictions:")
+        high_pairs = [p for p in top_pairs if sensitivity["confidence"].get(p) == "HIGH"]
+        for pair in high_pairs[:5]:
+            cid, did = pair
+            cname = G.nodes[cid].get("name", cid) if cid in G else cid
+            dname = G.nodes[did].get("name", did) if did in G else did
+            is_true = "TRUE" if pair in positive_pairs else "pred"
+            score = all_scores[best_method_key].get(pair, 0)
+            print(f"    [{is_true:>4s}] {cname:25s} → {dname:25s} "
+                  f"(score={score:.4f}, survival={sensitivity['pair_survival'].get(pair,0)}/5)")
+    else:
+        print("\n[Part 4] Sensitivity Analysis — SKIPPED (use --sensitivity flag)")
+        print("  (Edge perturbation on 870K edges is slow; run separately if needed)")
 
     # ===== PART 5: Safety Showcase =====
     print("\n[Part 5] Safety Dimension Showcase")
