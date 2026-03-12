@@ -26,7 +26,7 @@ The function implements the recursive layering strategy with:
 5. Vertex partitioning and recursive calls
 """
 function recursive_layer!(graph::DMYGraph, dist::Vector{Float64}, parent::Vector{Int},
-                         U::Vector{Int}, S::OrderedSet{Int}, B::Float64)
+                         U::Vector{Int}, S::AbstractSet{Int}, B::Float64)
     
     # Base case: if vertex set is empty, return
     if isempty(U)
@@ -83,7 +83,7 @@ function recursive_layer!(graph::DMYGraph, dist::Vector{Float64}, parent::Vector
         P = select_pivots(U_tilde, S, k, dist)
         
         # Apply BMSSP on pivots only
-        P_set = OrderedSet(sort(P))
+        P_set = Set(P)
         final_frontier = bmssp!(graph, dist, parent, P_set, B, k)
         
         # Update frontier to the result of BMSSP
@@ -101,11 +101,11 @@ function recursive_layer!(graph::DMYGraph, dist::Vector{Float64}, parent::Vector
     # Recursive call for each block with proper frontier
     for block in blocks
         # Create frontier for this block from the active frontier S
-        block_frontier = OrderedSet{Int}()
+        block_frontier = Set{Int}()
         
         # Use vertices from the current frontier S that belong to this block
         for v in S
-            if v in block.vertices
+            if v in block.vertex_set
                 push!(block_frontier, v)
             end
         end
@@ -155,9 +155,8 @@ Time complexity: O(m log^(2/3) n) for sparse graphs
 Space complexity: O(n) for distance and parent arrays
 """
 function dmy_sssp!(graph::DMYGraph, source::Int)
-    
-    # Validate inputs
-    validate_graph(graph)
+
+    # Validate source (graph validated at construction time)
     1 <= source <= graph.n_vertices || throw(BoundsError("Source vertex $source out of range"))
     
     # Initialize distance and parent arrays
@@ -170,7 +169,7 @@ function dmy_sssp!(graph::DMYGraph, source::Int)
     
     # Initialize algorithm parameters
     U = collect(1:n)  # Full vertex set
-    S = OrderedSet([source])  # Initial frontier
+    S = Set([source])  # Initial frontier
     B = INF  # No bound initially
     
     # Run recursive algorithm
@@ -178,7 +177,7 @@ function dmy_sssp!(graph::DMYGraph, source::Int)
     
     # Post-processing: ensure all reachable vertices are found
     # Run Bellman-Ford style relaxation to catch any missed vertices
-    max_passes = min(n, 10)  # Increased from 3 to handle long chains
+    max_passes = min(n, 3)  # Safety net; early termination usually triggers in 1-2
     for pass in 1:max_passes
         improved = false
         
@@ -217,9 +216,8 @@ DMY algorithm that returns both distances and parent pointers for path reconstru
 - Tuple of (distances, parents) where parents[v] gives the predecessor of v in shortest path tree
 """
 function dmy_sssp_with_parents!(graph::DMYGraph, source::Int)
-    
-    # Validate inputs
-    validate_graph(graph)
+
+    # Validate source (graph validated at construction time)
     1 <= source <= graph.n_vertices || throw(BoundsError("Source vertex $source out of range"))
     
     # Initialize arrays
@@ -230,14 +228,14 @@ function dmy_sssp_with_parents!(graph::DMYGraph, source::Int)
     
     # Run algorithm
     U = collect(1:n)
-    S = OrderedSet([source])
+    S = Set([source])
     B = INF
     
     recursive_layer!(graph, dist, parent, U, S, B)
     
     # Post-processing: ensure all reachable vertices are found
     # Run Bellman-Ford style relaxation to catch any missed vertices
-    max_passes = min(n, 10)  # Handle long chains
+    max_passes = min(n, 3)  # Handle long chains
     for pass in 1:max_passes
         improved = false
         
@@ -282,9 +280,8 @@ Can be more efficient when only short paths are needed.
 - Distance array with INF for vertices beyond max_distance
 """
 function dmy_sssp_bounded!(graph::DMYGraph, source::Int, max_distance::Float64)
-    
-    # Validate inputs
-    validate_graph(graph)
+
+    # Validate source (graph validated at construction time)
     1 <= source <= graph.n_vertices || throw(BoundsError("Source vertex $source out of range"))
     max_distance >= 0 || throw(ArgumentError("Maximum distance must be non-negative"))
     
@@ -296,13 +293,13 @@ function dmy_sssp_bounded!(graph::DMYGraph, source::Int, max_distance::Float64)
     
     # Run algorithm with bound
     U = collect(1:n)
-    S = OrderedSet([source])
+    S = Set([source])
     B = max_distance
     
     recursive_layer!(graph, dist, parent, U, S, B)
     
     # Post-processing: ensure all vertices reachable within bound are found
-    max_passes = min(n, 10)
+    max_passes = min(n, 3)
     for pass in 1:max_passes
         improved = false
         

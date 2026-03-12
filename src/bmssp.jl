@@ -23,17 +23,16 @@ Updates the distance and parent arrays in-place and returns the final frontier.
 """
 function bmssp!(graph::DMYGraph, dist::Vector{Float64}, parent::Vector{Int},
                 frontier::AbstractSet{Int}, bound::Float64, k::Int)
-    
-    # Validate inputs
+
     length(dist) == graph.n_vertices || throw(ArgumentError("Distance array size mismatch"))
     length(parent) == graph.n_vertices || throw(ArgumentError("Parent array size mismatch"))
     k > 0 || throw(ArgumentError("Number of rounds k must be positive"))
     (bound >= 0 || bound == INF) || throw(ArgumentError("Bound must be non-negative or INF"))
-    
-    current_frontier = OrderedSet(sort(collect(frontier)))
+
+    current_frontier = Set(collect(frontier))
     
     for round in 1:k
-        next_frontier = OrderedSet{Int}()
+        next_frontier = Set{Int}()
         updated_any = false
         
         # Process all vertices in current frontier
@@ -82,11 +81,11 @@ Returns the new frontier and whether any updates occurred.
 """
 function bmssp_single_round!(graph::DMYGraph, dist::Vector{Float64}, parent::Vector{Int},
                             frontier::AbstractSet{Int}, bound::Float64)
-    
-    next_frontier = OrderedSet{Int}()
+
+    next_frontier = Set{Int}()
     updated_any = false
-    
-    for u in sort(collect(frontier))
+
+    for u in frontier
         # Skip if vertex distance exceeds bound or is unreachable
         if dist[u] == INF || dist[u] > bound
             continue
@@ -124,7 +123,7 @@ Useful for algorithm analysis and debugging.
 function count_relaxations(graph::DMYGraph, frontier::AbstractSet{Int}, bound::Float64, 
                           dist::Vector{Float64})
     count = 0
-    for u in sort(collect(frontier))
+    for u in frontier
         if dist[u] == INF || dist[u] > bound
             continue
         end
@@ -182,7 +181,7 @@ function bmssp_with_statistics!(graph::DMYGraph, dist::Vector{Float64}, parent::
     stats["vertices_updated"] = 0
     stats["early_termination"] = false
     
-    current_frontier = OrderedSet(sort(collect(frontier)))
+    current_frontier = Set(collect(frontier))
     
     for round in 1:k
         stats["rounds_performed"] = round

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.chembl_cache/
+.venv/
+*.egg-info/
+uv.lock
+data/chembl_real.json
+data/hetionet/
+data/chembl_scaleup.json
+.chembl_cache/
