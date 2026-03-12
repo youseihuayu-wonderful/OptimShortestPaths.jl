@@ -444,13 +444,27 @@ def build_fallback_scores(sider_scores: dict[str, float],
     print("  Building fallback safety scores from Hetionet causes edges...")
     with open(compact_pkl, "rb") as f:
         cached = pickle.load(f)
-    G = cached["G"]
 
-    # Count 'causes' edges per compound
+    # hetionet_compact.pkl filters out 'causes' edges (keeps only mechanistic edges).
+    # Try side_effect_counts from the enriched raw cache first; fall back to graph traversal.
     raw_counts: dict[str, int] = defaultdict(int)
-    for u, _v, d in G.edges(data=True):
-        if d.get("edge_type") == "causes" and u.startswith("Compound::"):
-            raw_counts[u] += 1
+    if "side_effect_counts" in cached:
+        for compound, count in cached["side_effect_counts"].items():
+            raw_counts[compound] = count
+    else:
+        G = cached["G"]
+        for u, _v, d in G.edges(data=True):
+            if d.get("edge_type") == "causes" and u.startswith("Compound::"):
+                raw_counts[u] += 1
+
+    if not raw_counts:
+        # Try the enriched benchmark cache which always has side_effect_counts
+        enriched_pkl = DATA_DIR / "hetionet_enriched_raw.pkl"
+        if enriched_pkl.exists():
+            with open(enriched_pkl, "rb") as f:
+                enriched = pickle.load(f)
+            for compound, count in enriched.get("side_effect_counts", {}).items():
+                raw_counts[compound] = count
 
     # Log-normalize
     log_scores = {c: math.log(1 + n) for c, n in raw_counts.items()
