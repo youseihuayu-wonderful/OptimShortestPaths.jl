@@ -2,6 +2,8 @@
 
 **Optimization via Shortest Paths** -- A Julia framework implementing the DMY algorithm (STOC 2025) for directed single-source shortest paths, with multi-objective extensions and domain application templates.
 
+[![CI](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/ci.yml)
+[![Documentation](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/documentation.yml/badge.svg)](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## Problem

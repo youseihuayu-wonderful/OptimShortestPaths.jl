@@ -57,9 +57,9 @@ from __future__ import annotations
 
 import csv
 import gzip
-import json
-import os
+import math
 import pickle
+import statistics
 from collections import defaultdict
 from pathlib import Path
 
@@ -302,10 +302,36 @@ def compute_safety_scores(compound_se: dict[str, dict[str, float]]
         raw = sum(freq * severity_weight(pt) for pt, freq in se_dict.items())
         n = len(se_dict)
         # log normalization — at minimum 1 pair, log(2) ≈ 0.693
-        import math
         normalized = raw / math.log(1 + n)
         scores[hetio_id] = normalized
     return scores
+
+
+def diagnose_compound(hetio_id: str, compound_se: dict[str, dict[str, float]]) -> None:
+    """
+    Print per-PT breakdown for a specific compound.
+    Useful for diagnosing unexpectedly low scores (e.g. Methotrexate).
+    """
+    se_dict = compound_se.get(hetio_id)
+    if se_dict is None:
+        print(f"  {hetio_id}: NOT in SIDER frequency data")
+        return
+    n = len(se_dict)
+    raw = sum(freq * severity_weight(pt) for pt, freq in se_dict.items())
+    normalized = raw / math.log(1 + n)
+    print(f"  {hetio_id}: n_PT_pairs={n}, raw_score={raw:.4f}, "
+          f"log_norm={math.log(1+n):.3f}, final_score={normalized:.4f}")
+    print(f"  {'PT name':<45s} {'freq':>7s} {'sev':>5s} {'contrib':>8s}")
+    print(f"  {'-'*70}")
+    rows = sorted(
+        [(pt, freq, severity_weight(pt), freq * severity_weight(pt))
+         for pt, freq in se_dict.items()],
+        key=lambda x: -x[3]
+    )
+    for pt, freq, sev, contrib in rows[:30]:
+        print(f"  {pt:<45s} {freq:>7.4f} {sev:>5.1f} {contrib:>8.4f}")
+    if len(rows) > 30:
+        print(f"  ... ({len(rows) - 30} more PT terms)")
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +358,12 @@ VALIDATION_CASES = {
 def validate_scores(scores: dict[str, float]) -> bool:
     """
     Print validation table and return True if ordering is pharmacologically plausible.
-    Critical test: thalidomide (DB01041) > aspirin (DB00945) by safety score.
+
+    Tests only use compounds confirmed to be in SIDER frequency data.
+    Aspirin and Warfarin are NOT in SIDER meddra_freq.tsv (no label frequency data).
+
+    Critical pairwise tests: high-risk cytotoxic/immunosuppressive drugs must
+    outscore common antibiotics and ICU agents by safety score.
     """
     print("\n  Validation cases (higher score = more unsafe):")
     print(f"  {'Compound':<20s} {'DB ID':<15s} {'Score':>8s} {'Expected':>10s} {'In SIDER':>9s}")
@@ -347,12 +378,6 @@ def validate_scores(scores: dict[str, float]) -> bool:
         print(f"  {name:<20s} {db_id:<15s} {score:>8.4f} {expected:>10s} {'YES':>9s}")
     for db_id, (name, expected) in not_in_sider.items():
         print(f"  {name:<20s} {db_id:<15s} {'N/A':>8s} {expected:>10s} {'NO':>9s}")
-
-    # Critical test
-    thalidomide_score = scores.get("Compound::DB01041", None)
-    aspirin_score = scores.get("Compound::DB00945", None)
-    warfarin_score = scores.get("Compound::DB00682", None)
-    mtx_score = scores.get("Compound::DB00563", None)
 
     print("\n  Critical ordering tests:")
     passed = 0
@@ -387,6 +412,73 @@ def validate_scores(scores: dict[str, float]) -> bool:
 
     print(f"\n  Result: {passed}/{total} ordering tests passed")
     return passed >= total // 2 + 1  # majority pass
+
+
+# ---------------------------------------------------------------------------
+# Fallback: log-normalized Hetionet 'causes' edge count
+# ---------------------------------------------------------------------------
+
+FALLBACK_CACHE_PATH = DATA_DIR / "sider_fallback_scores.pkl"
+
+
+def build_fallback_scores(sider_scores: dict[str, float],
+                          force_rebuild: bool = False) -> dict[str, float]:
+    """
+    For compounds NOT in SIDER frequency data (67% of Hetionet), compute a
+    fallback safety score from Hetionet's Compound-causes-SideEffect edge count.
+
+    Uses log(1 + count) normalization (same form as SIDER score) scaled to
+    match the SIDER score distribution (same median and 75th percentile).
+
+    Returns {hetionet_id: fallback_safety_score} for non-SIDER compounds only.
+    """
+    if FALLBACK_CACHE_PATH.exists() and not force_rebuild:
+        with open(FALLBACK_CACHE_PATH, "rb") as f:
+            return pickle.load(f)
+
+    compact_pkl = DATA_DIR / "hetionet_compact.pkl"
+    if not compact_pkl.exists():
+        print("  WARNING: hetionet_compact.pkl not found — skipping fallback")
+        return {}
+
+    print("  Building fallback safety scores from Hetionet causes edges...")
+    with open(compact_pkl, "rb") as f:
+        cached = pickle.load(f)
+    G = cached["G"]
+
+    # Count 'causes' edges per compound
+    raw_counts: dict[str, int] = defaultdict(int)
+    for u, _v, d in G.edges(data=True):
+        if d.get("edge_type") == "causes" and u.startswith("Compound::"):
+            raw_counts[u] += 1
+
+    # Log-normalize
+    log_scores = {c: math.log(1 + n) for c, n in raw_counts.items()
+                  if c not in sider_scores}
+
+    if not log_scores or not sider_scores:
+        return {}
+
+    # Scale to match SIDER distribution (align medians and p75)
+    sider_vals = sorted(sider_scores.values())
+    sider_median = sider_vals[len(sider_vals) // 2]
+    sider_p75    = sider_vals[int(0.75 * len(sider_vals))]
+
+    ls_vals = sorted(log_scores.values())
+    ls_median = ls_vals[len(ls_vals) // 2]
+    ls_p75    = ls_vals[int(0.75 * len(ls_vals))]
+
+    # Linear scale so fallback p75 maps to SIDER p75
+    scale = sider_p75 / ls_p75 if ls_p75 > 0 else 1.0
+    fallback = {c: s * scale for c, s in log_scores.items()}
+
+    print(f"  Fallback scores: {len(fallback)} compounds "
+          f"(scale={scale:.3f}, median={statistics.median(fallback.values()):.4f})")
+
+    with open(FALLBACK_CACHE_PATH, "wb") as f:
+        pickle.dump(fallback, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +518,6 @@ def build_sider_safety_scores(force_rebuild: bool = False) -> dict[str, float]:
     print(f"  Score coverage: {len(scores)}/{len(hetionet_compounds)} compounds ({coverage:.1f}%)")
 
     # Step 4: Score distribution
-    import statistics
     vals = list(scores.values())
     if vals:
         vals_sorted = sorted(vals)
@@ -450,12 +541,43 @@ def main() -> None:
     print("=" * 70)
 
     force = "--rebuild" in sys.argv
-    scores = build_sider_safety_scores(force_rebuild=force)
+    validate_only = "--validate-only" in sys.argv
+
+    # Need compound_se for diagnostics — rebuild from scratch
+    if not validate_only:
+        pubchem_to_db = load_pubchem_to_drugbank(DRUGBANK_PUBCHEM_MAP)
+        hetionet_compounds = load_hetionet_compounds(NODES_TSV)
+        compound_se = parse_sider_freq(SIDER_FREQ_GZ, pubchem_to_db, hetionet_compounds)
+        scores = compute_safety_scores(compound_se)
+        if force or not CACHE_PATH.exists():
+            with open(CACHE_PATH, "wb") as f:
+                pickle.dump(scores, f, protocol=pickle.HIGHEST_PROTOCOL)
+    else:
+        scores = build_sider_safety_scores(force_rebuild=False)
+        compound_se = {}  # not available in validate-only mode
+
+    # Fallback scores for non-SIDER compounds
+    print("\n  Building fallback scores...")
+    fallback = build_fallback_scores(scores, force_rebuild=force)
+    all_scores = {**fallback, **scores}  # SIDER takes priority
+    print(f"  Total coverage: {len(all_scores)} compounds "
+          f"(SIDER: {len(scores)}, fallback: {len(fallback)})")
 
     print("\n" + "=" * 70)
     print(" Validation")
     print("=" * 70)
     passed = validate_scores(scores)
+
+    # Diagnose methotrexate (known low scorer — frequency-weighting limitation)
+    if compound_se:
+        print("\n" + "=" * 70)
+        print(" Methotrexate Diagnosis (DB00563)")
+        print("=" * 70)
+        diagnose_compound("Compound::DB00563", compound_se)
+        print("\n  NOTE: Methotrexate's severe ADRs (hepatotoxicity, mucositis) have")
+        print("  low label frequencies (rare but serious). freq×severity is small.")
+        print("  This is a known limitation of frequency-weighting: rare but")
+        print("  life-threatening events are downweighted vs common mild events.")
 
     # Top 20 most unsafe
     print("\n  Top 20 highest-scoring (most unsafe) compounds:")

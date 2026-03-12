@@ -3,7 +3,7 @@ ChemPath POC v3: Multi-Objective Pareto Drug Repurposing Benchmark.
 
 Key fixes over POC2:
   - Efficacy: pIC50 modulates ±30% around base edge-type weight (preserves topology)
-  - Safety: SIDER frequency-tier weighting (avg severity per SE, not raw count)
+  - Safety: SIDER 4.1 freq×CTCAE-severity with log-normalization (sider_safety_score.py)
   - Evidence: unchanged from POC2
 
 Enriches Hetionet's binary graph with:
@@ -35,6 +35,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import networkx as nx
+
+# Kim's SIDER 4.1 bias-corrected safety score (freq × CTCAE severity / log norm)
+sys.path.insert(0, str(Path(__file__).parent))
+from sider_safety_score import build_sider_safety_scores, build_fallback_scores
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -952,18 +956,20 @@ def main():
     pubchem_mapped = sum(1 for db in het_db_ids if db in db_pubchem_map)
     print(f"  DrugBank→PubChem: {pubchem_mapped}/{len(het_db_ids)} compounds ({100*pubchem_mapped/len(het_db_ids):.1f}%)")
 
-    # SIDER severity data
-    print("  Loading SIDER severity data...")
-    sider_severity_pubchem = load_sider_severity()
+    # SIDER 4.1 bias-corrected safety score (Kim's freq × CTCAE-severity)
+    print("  Loading SIDER 4.1 safety scores (freq × severity / log-norm)...")
+    sider_scores = build_sider_safety_scores()
+    fallback_scores = build_fallback_scores(sider_scores)
+    all_safety_scores = {**fallback_scores, **sider_scores}  # SIDER takes priority
 
-    # Map SIDER (PubChem CID) -> DrugBank
-    pubchem_to_db = {v: k for k, v in db_pubchem_map.items()}
+    # Map Compound::DBXXXXX → DBXXXXX for compatibility with weight builder
     compound_severity = {}
-    for pubchem_cid, severity in sider_severity_pubchem.items():
-        db_id = pubchem_to_db.get(pubchem_cid)
-        if db_id and db_id in het_db_ids:
-            compound_severity[db_id] = severity
-    print(f"  SIDER→Hetionet: {len(compound_severity)} compounds with severity data")
+    for hetio_id, score in all_safety_scores.items():
+        db_id = hetio_id.replace("Compound::", "")
+        if db_id in het_db_ids:
+            compound_severity[db_id] = score
+    print(f"  SIDER→Hetionet: {len(compound_severity)} compounds with safety data "
+          f"(SIDER: {len(sider_scores)}, fallback: {len(fallback_scores)})")
 
     # ------------------------------------------------------------------
     # Part 2: ChEMBL bioactivity queries
