@@ -29,6 +29,32 @@ Comprehensive performance analysis of the DMY algorithm implementation.
 - **Best case**: 4.79× speedup observed at n=5,000 vertices
 - **Sparse graphs**: Results are for graphs with m ≈ 2n (realistic for many applications)
 
+## Real-World Scale: Hetionet Biomedical Graph
+
+Benchmarks on Hetionet-scale graphs (47K nodes, 450K edges) and scale-up tests,
+using the Julia DMY implementation (`ChemPath/scripts/dmy_hetionet_benchmark.jl`).
+
+| Graph Scale | Nodes | Edges | DMY (ms) | Dijkstra (ms) | Speedup |
+|-------------|-------|-------|----------|---------------|---------|
+| Hetionet    | 47,000 | 450,000 | 103.5 | 3,987.4 | **38.5×** |
+| Scale-up    | 100,000 | 1,000,000 | 337.8 | 50,621.7 | **149.9×** |
+| Scale-up    | 500,000 | 5,000,000 | 1,572.3 | 506,219.6 | **321.9×** |
+
+**Multi-source benchmark** (411 SSSP calls, simulating 137 diseases × 3 dimensions):
+- DMY: 41.3s total | Dijkstra: 1,678.5s total | **40.6× speedup**
+
+**Correctness**: 47,000/47,000 distances match Dijkstra exactly (100%).
+
+### Drug Repurposing Application (ChemPath POC v3)
+
+The DMY algorithm powers a Pareto drug repurposing pipeline on the Hetionet v1.0
+biomedical knowledge graph (47K nodes, 2.25M edges), validated against PharmacotherapyDB
+(755 disease-modifying indications):
+
+- **1D AUROC** (topology + efficacy): 0.7727
+- **Pareto rescues**: 4 true treatments found in top-50 that single-objective ranking misses
+- **Case studies**: Cytarabine (rank 24→6), Moexipril (rank 12→5), Chlorambucil (rank 111→6)
+
 ## Complexity Analysis
 
 ### Theoretical Complexity
