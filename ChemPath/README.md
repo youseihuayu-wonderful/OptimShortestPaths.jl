@@ -53,6 +53,11 @@ chempath/
 | ChEMBL (1,553 drugs) | 0.909 | 0.733 | -- |
 | Hetionet (47K nodes) | 0.794 | 0.210 | 5.2x MRR |
 
+**Pareto drug repurposing (POC v3)** on Hetionet with pIC50 efficacy + SIDER safety:
+- 1D AUROC: **0.7727** (topology + efficacy modulation)
+- **4 Pareto rescues** in top-50: true treatments missed by single-objective ranking
+- Case studies: Cytarabine (24→6), Moexipril (12→5), Chlorambucil (111→6)
+
 **Julia bridge verification**: DMY and Dijkstra produce identical distances (max discrepancy = 0.00) across all tested graphs.
 
 ## Setup
@@ -69,11 +74,13 @@ Requires Python 3.12 and Julia 1.9+ with OptimShortestPaths.jl installed.
 
 | Script | Purpose |
 |---|---|
-| `scripts/demo.py` | Basic pipeline demo on curated data |
+| `scripts/chempath_enriched_benchmark.py` | POC v3: Pareto drug repurposing on Hetionet |
+| `scripts/poc3_case_studies.py` | Biological path interpretation for rescued drugs |
+| `scripts/dmy_hetionet_benchmark.jl` | Julia DMY speed benchmark (38×–322× speedup) |
 | `scripts/dmy_vs_dijkstra.py` | DMY vs Dijkstra wall-clock benchmark |
 | `scripts/scaleup_test.py` | ChEMBL 1,553-drug validation |
-| `scripts/hetionet_benchmark.py` | Hetionet 47K-node benchmark |
 | `scripts/generate_final_figures.py` | Publication figures |
+| `scripts/fetch_chembl_data.py` | ChEMBL data fetcher |
 
 ## Key Design Decisions
 
