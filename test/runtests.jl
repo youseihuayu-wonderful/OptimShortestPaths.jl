@@ -17,5 +17,6 @@ using .OptimShortestPaths
     include("test_pharma_networks.jl")
     include("test_multi_objective.jl")
     include("test_correctness.jl")
+    include("test_edge_cases.jl")
     include("test_documentation_examples.jl")
 end
