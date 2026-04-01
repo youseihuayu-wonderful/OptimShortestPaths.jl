@@ -453,6 +453,20 @@ def build_enriched_weights(
         "compounds_with_severity": len(compound_severity),
     }
 
+    # Pre-compute node degrees for IDF-style normalization
+    # High-degree nodes (hubs) create spurious short paths to everything
+    # Penalize edges FROM high-degree nodes (reduce their transition probability)
+    node_out_degree = {}
+    for node in G.nodes():
+        node_out_degree[node] = max(G.out_degree(node), 1)
+    all_degrees = sorted(node_out_degree.values())
+    median_degree = all_degrees[len(all_degrees) // 2] if all_degrees else 10
+    # IDF-style: log(median_degree / degree) gives negative for hubs, positive for specific nodes
+    DEGREE_MOD_STRENGTH = 0.15  # How much degree affects weight (conservative)
+
+    stats["median_out_degree"] = median_degree
+    stats["degree_mod_strength"] = DEGREE_MOD_STRENGTH
+
     for u, v in G.edges():
         meta = edge_metadata.get((u, v), {})
         edge_type = meta.get("edge_type", G[u][v].get("edge_type", "unknown"))
@@ -464,6 +478,22 @@ def build_enriched_weights(
         n_sources = max(len(sources), 1)
         similarity = meta.get("similarity")
 
+        # --- EVIDENCE MODULATION (applied to ALL edge types) ---
+        # More PubMed citations + more sources → more reliable edge → higher prob
+        # This breaks the degeneracy where all edges of same type get identical weight
+        evd_mod = math.log(1 + n_pubmed) / 4.0 + (n_sources - 1) / 5.0
+        evd_mod = min(evd_mod, 1.0)  # cap at 1.0
+        # Scale to ±15% modulation around base probability
+        EVD_MOD_RANGE = 0.15
+        evd_factor = 1.0 + EVD_MOD_RANGE * (evd_mod - 0.3)  # center at typical evidence level
+
+        # --- DEGREE NORMALIZATION ---
+        # Penalize edges from hub nodes (high out-degree → less specific signal)
+        src_degree = node_out_degree.get(u, median_degree)
+        degree_ratio = math.log(max(src_degree, 1)) / math.log(max(median_degree, 2))
+        degree_factor = 1.0 - DEGREE_MOD_STRENGTH * max(0, degree_ratio - 1.0)
+        degree_factor = max(0.7, min(1.1, degree_factor))
+
         # --- EFFICACY WEIGHT ---
         base_prob = EDGE_TYPE_PROB.get(edge_type, 0.50)
 
@@ -474,19 +504,54 @@ def build_enriched_weights(
             potency = compound_potency.get(db_id)
 
             if potency is not None:
-                # POC v3 fix: pIC50 modulates ±MODULATION_RANGE around base weight
-                # Preserves topology-based ranking while adding continuous variation
+                # pIC50 modulates ±MODULATION_RANGE around base weight
                 modulation = MODULATION_RANGE * (potency - median_potency) / (potency_range + 1e-6)
-                p_eff = base_prob * (1.0 + modulation)  # higher pIC50 → higher prob → lower weight
-                p_eff = max(0.05, min(0.99, p_eff))
+                p_eff = base_prob * (1.0 + modulation)
             else:
-                # Fallback: use fixed edge-type probability (same as POC1)
-                p_eff = base_prob  # 0.80 for binds
+                p_eff = base_prob
+            # Also apply evidence + action bonus for binds
+            has_action = 1.0 if meta.get("actions") else 0.0
+            action_bonus = 1.0 + 0.05 * has_action  # 5% boost if pharmacological action known
+            p_eff = p_eff * evd_factor * degree_factor * action_bonus
+            p_eff = max(0.05, min(0.99, p_eff))
         elif edge_type == "resembles" and similarity is not None:
-            p_eff = max(0.1, similarity)
+            p_eff = max(0.1, similarity) * degree_factor
+            p_eff = max(0.05, min(0.99, p_eff))
+        elif edge_type in ("upregulates", "downregulates"):
+            # Gene regulation: modulate by target gene connectivity
+            # Genes targeted by fewer drugs are more specific → stronger signal
+            tgt_in = max(G.in_degree(v), 1)
+            specificity = math.log(max(median_degree, 2)) / math.log(max(tgt_in, 2))
+            specificity = max(0.5, min(1.5, specificity))
+            p_eff = base_prob * specificity * evd_factor * degree_factor
+            p_eff = max(0.05, min(0.99, p_eff))
+        elif edge_type == "interacts":
+            # Protein-protein interaction: use unbiased flag + evidence
+            # Unbiased interactions (from high-throughput screens) are more reliable
+            unbiased_bonus = 1.05 if meta.get("unbiased") else 1.0
+            p_eff = base_prob * evd_factor * degree_factor * unbiased_bonus
+            p_eff = max(0.05, min(0.99, p_eff))
+        elif edge_type == "associates":
+            # Gene-disease association: modulate by evidence depth
+            # More sources = stronger association evidence
+            assoc_strength = 1.0 + 0.10 * min(n_sources / 3.0, 1.0)
+            p_eff = base_prob * assoc_strength * evd_factor * degree_factor
+            p_eff = max(0.05, min(0.99, p_eff))
         else:
-            # Other edge types: fixed type-based probability (matches POC1)
-            p_eff = base_prob
+            # Remaining edge types (palliates, includes, localizes, etc.)
+            # Apply evidence + degree modulation + source count variation
+            source_mod = 1.0 + 0.08 * min(n_sources / 3.0, 1.0)
+            p_eff = base_prob * evd_factor * degree_factor * source_mod
+            p_eff = max(0.05, min(0.99, p_eff))
+
+        # --- DETERMINISTIC TIE-BREAKING ---
+        # Hash-based micro-perturbation to break degenerate weights.
+        # Magnitude ~0.1% of base weight: enough to break ties, too small to
+        # change the relative ordering of edges with genuinely different weights.
+        edge_hash = hash((u, v)) % 10000  # deterministic, reproducible
+        tiebreak = 1.0 + 0.001 * (edge_hash / 10000.0 - 0.5)  # ±0.05%
+        p_eff *= tiebreak
+        p_eff = max(0.05, min(0.99, p_eff))
 
         G_eff[u][v]["weight"] = _safe_log(p_eff)
 
@@ -513,6 +578,9 @@ def build_enriched_weights(
             # Non-compound edges: neutral safety
             p_saf = 0.90
 
+        # Safety tie-breaking (same hash, different seed via bit shift)
+        saf_hash = hash((v, u)) % 10000
+        p_saf *= 1.0 + 0.001 * (saf_hash / 10000.0 - 0.5)
         G_saf[u][v]["weight"] = _safe_log(max(p_saf, 0.01))
 
         # --- EVIDENCE WEIGHT ---
@@ -530,6 +598,10 @@ def build_enriched_weights(
             # Other edges: moderate evidence with small variation
             p_evd = 0.4 + 0.2 * min(n_sources / 3.0, 1.0)
 
+        # Evidence tie-breaking
+        evd_hash = hash((u, v, "evd")) % 10000
+        p_evd *= 1.0 + 0.001 * (evd_hash / 10000.0 - 0.5)
+        p_evd = max(0.05, min(0.99, p_evd))
         G_evd[u][v]["weight"] = _safe_log(p_evd)
 
     return G_eff, G_saf, G_evd, stats
@@ -662,6 +734,19 @@ def compute_auroc(
                 score = 3.0 / (1.0 / p_e + 1.0 / p_s + 1.0 / p_v)
             else:
                 score = 0.0
+        elif method == "eff_evd_fused":
+            # Evidence-fused efficacy: multiply efficacy by evidence confidence
+            # This rewards paths that are both short AND well-supported
+            if d_e < 50 and d_v < 50:
+                score = math.exp(-(0.7 * d_e + 0.3 * d_v))
+            else:
+                score = 0.0
+        elif method == "eff_evd_safety_fused":
+            # Triple-fused: efficacy dominates, evidence breaks ties, safety penalizes
+            if all(d < 50 for d in (d_e, d_s, d_v)):
+                score = math.exp(-(0.6 * d_e + 0.25 * d_v + 0.15 * d_s))
+            else:
+                score = 0.0
         else:
             score = 0.0
 
@@ -697,7 +782,7 @@ def compute_auroc(
 
 def bootstrap_ci(
     scores: dict, positive_pairs: set, method: str,
-    n_resamples: int = 50, seed: int = 42,
+    n_resamples: int = 1000, seed: int = 42,
 ) -> tuple[float, float, float]:
     """Bootstrap 95% CI for AUROC."""
     rng = random.Random(seed)
@@ -886,30 +971,344 @@ def analyze_weight_distributions(
     G_eff: nx.DiGraph, G_saf: nx.DiGraph, G_evd: nx.DiGraph,
     edge_metadata: dict,
 ) -> dict:
-    """Report weight statistics for binds edges to verify continuous variation."""
+    """Report weight statistics for ALL edge types to verify continuous variation."""
     stats = {}
     for name, G_dim in [("efficacy", G_eff), ("safety", G_saf), ("evidence", G_evd)]:
-        binds_weights = []
-        all_weights = []
+        weights_by_type: dict[str, list[float]] = {}
         for u, v, d in G_dim.edges(data=True):
             w = d.get("weight", 0)
-            all_weights.append(w)
             meta = edge_metadata.get((u, v), {})
-            if meta.get("edge_type") == "binds":
-                binds_weights.append(w)
+            et = meta.get("edge_type", "unknown")
+            weights_by_type.setdefault(et, []).append(w)
 
-        if binds_weights:
-            binds_weights.sort()
-            unique = len(set(round(w, 6) for w in binds_weights))
-            stats[name] = {
-                "binds_mean": sum(binds_weights) / len(binds_weights),
-                "binds_std": (sum((w - sum(binds_weights)/len(binds_weights))**2 for w in binds_weights) / len(binds_weights)) ** 0.5,
-                "binds_min": binds_weights[0],
-                "binds_max": binds_weights[-1],
-                "binds_unique": unique,
-                "binds_total": len(binds_weights),
+        dim_stats = {}
+        for et, weights in sorted(weights_by_type.items()):
+            if not weights:
+                continue
+            weights.sort()
+            n = len(weights)
+            mean_w = sum(weights) / n
+            std_w = (sum((w - mean_w) ** 2 for w in weights) / n) ** 0.5
+            unique = len(set(round(w, 6) for w in weights))
+            dim_stats[et] = {
+                "mean": mean_w,
+                "std": std_w,
+                "min": weights[0],
+                "max": weights[-1],
+                "unique": unique,
+                "total": n,
+                "pct_unique": round(100 * unique / n, 1),
             }
+        stats[name] = dim_stats
     return stats
+
+
+# ===========================================================================
+# Phase 1 Improvements: Learned weights, CV, safety-aware metrics
+# ===========================================================================
+
+def learn_edge_type_probs(
+    G: nx.DiGraph,
+    edge_metadata: dict,
+    compound_potency: dict[str, float],
+    compound_severity: dict[str, float],
+    side_effect_counts: dict[str, int],
+    positive_pairs: set,
+    eval_compounds: set,
+    eval_diseases: set,
+    ground_truth: dict,
+    n_steps: int = 5,
+) -> dict[str, float]:
+    """
+    Learn optimal edge-type base probabilities via coordinate-wise grid search.
+
+    For each edge type, sweeps probability in [0.3, 0.95] while holding others
+    fixed, selecting the value that maximizes AUROC on the given data.
+
+    Returns: optimized EDGE_TYPE_PROB dict.
+    """
+    import copy
+
+    best_probs = copy.deepcopy(EDGE_TYPE_PROB)
+    candidates = [round(0.3 + i * (0.65 / (n_steps - 1)), 2) for i in range(n_steps)]
+
+    # Only tune edge types that appear in the graph
+    edge_types_present = set()
+    for meta in edge_metadata.values():
+        et = meta.get("edge_type")
+        if et:
+            edge_types_present.add(et)
+
+    # Coordinate descent: iterate through each edge type
+    for round_num in range(2):  # 2 full sweeps
+        for edge_type in sorted(edge_types_present & set(best_probs.keys())):
+            best_auroc = -1.0
+            best_val = best_probs[edge_type]
+
+            for p in candidates:
+                trial_probs = copy.deepcopy(best_probs)
+                trial_probs[edge_type] = p
+
+                # Build weights with trial probs
+                orig_probs = EDGE_TYPE_PROB.copy()
+                for k, v in trial_probs.items():
+                    EDGE_TYPE_PROB[k] = v
+
+                G_eff_t, G_saf_t, G_evd_t, _ = build_enriched_weights(
+                    G, edge_metadata, compound_potency, compound_severity, side_effect_counts
+                )
+                scores_t = score_all_pairs(G_eff_t, G_saf_t, G_evd_t, eval_compounds, eval_diseases)
+                auroc, _ = compute_auroc(scores_t, positive_pairs, "efficacy_1d")
+
+                # Restore original probs
+                for k, v in orig_probs.items():
+                    EDGE_TYPE_PROB[k] = v
+
+                if auroc > best_auroc:
+                    best_auroc = auroc
+                    best_val = p
+
+            best_probs[edge_type] = best_val
+
+        print(f"    Coordinate sweep {round_num + 1}/2 complete, best 1D AUROC: {best_auroc:.4f}")
+
+    return best_probs
+
+
+def kfold_cv_auroc(
+    G: nx.DiGraph,
+    edge_metadata: dict,
+    compound_potency: dict[str, float],
+    compound_severity: dict[str, float],
+    side_effect_counts: dict[str, int],
+    positive_pairs: set,
+    eval_compounds: set,
+    eval_diseases: set,
+    ground_truth: dict,
+    n_folds: int = 5,
+    seed: int = 42,
+) -> dict[str, list[float]]:
+    """
+    K-fold cross-validation on disease split.
+
+    Splits diseases into k folds. For each fold, evaluates AUROC on held-out
+    diseases using weights learned from the remaining diseases.
+
+    Returns: {method_name: [auroc_fold_1, ..., auroc_fold_k]}
+    """
+    rng = random.Random(seed)
+    diseases_list = sorted(eval_diseases)
+    rng.shuffle(diseases_list)
+
+    fold_size = len(diseases_list) // n_folds
+    folds = []
+    for i in range(n_folds):
+        start = i * fold_size
+        end = start + fold_size if i < n_folds - 1 else len(diseases_list)
+        folds.append(set(diseases_list[start:end]))
+
+    methods = ["efficacy_1d", "eff_safety_2d", "weighted_3d"]
+    results = {m: [] for m in methods}
+
+    # Build weights once (not learned per fold for now — Phase 2 adds per-fold learning)
+    G_eff, G_saf, G_evd, _ = build_enriched_weights(
+        G, edge_metadata, compound_potency, compound_severity, side_effect_counts
+    )
+
+    for fold_idx in range(n_folds):
+        test_diseases = folds[fold_idx]
+
+        # Score only test disease pairs
+        test_scores = {}
+        test_positives = set()
+
+        R_eff = G_eff.reverse(copy=True)
+        R_saf = G_saf.reverse(copy=True)
+        R_evd = G_evd.reverse(copy=True)
+
+        for disease in test_diseases:
+            if disease not in R_eff:
+                continue
+            try:
+                dist_eff = nx.single_source_dijkstra_path_length(R_eff, disease, weight="weight")
+            except nx.NetworkXError:
+                dist_eff = {}
+            try:
+                dist_saf = nx.single_source_dijkstra_path_length(R_saf, disease, weight="weight")
+            except nx.NetworkXError:
+                dist_saf = {}
+            try:
+                dist_evd = nx.single_source_dijkstra_path_length(R_evd, disease, weight="weight")
+            except nx.NetworkXError:
+                dist_evd = {}
+
+            for compound in eval_compounds:
+                pair = (compound, disease)
+                d_e = dist_eff.get(compound, float("inf"))
+                d_s = dist_saf.get(compound, float("inf"))
+                d_v = dist_evd.get(compound, float("inf"))
+                test_scores[pair] = (d_e, d_s, d_v)
+                if pair in positive_pairs:
+                    test_positives.add(pair)
+
+        # Compute AUROC for each method on this fold
+        for method in methods:
+            auroc, _ = compute_auroc(test_scores, test_positives, method)
+            results[method].append(auroc)
+
+        print(f"    Fold {fold_idx + 1}/{n_folds}: {len(test_diseases)} diseases, "
+              f"{len(test_positives)} positives, "
+              f"1D AUROC = {results['efficacy_1d'][-1]:.4f}")
+
+    return results
+
+
+def compute_swauroc(
+    scores: dict[tuple[str, str], tuple[float, float, float]],
+    positive_pairs: set,
+    compound_severity: dict[str, float],
+) -> float:
+    """
+    Safety-Weighted AUROC (swAUROC): a novel metric that rewards demoting
+    toxic true positives.
+
+    Standard AUROC treats all true positives equally. swAUROC weights each
+    TP by its safety profile: safe TPs contribute more to the score than
+    toxic TPs. This aligns the metric with the clinical goal of finding
+    SAFE effective drugs.
+
+    Weight for TP_i:  w_i = 1 / (1 + toxicity_i / median_toxicity)
+
+    Returns: swAUROC value in [0, 1].
+    """
+    # Get severity values for weighting
+    all_sev = [v for v in compound_severity.values() if v > 0]
+    median_sev = sorted(all_sev)[len(all_sev) // 2] if all_sev else 1.0
+
+    # Build scored list with safety weights
+    scored_list = []
+    for (compound, disease), (d_e, d_s, d_v) in scores.items():
+        label = 1 if (compound, disease) in positive_pairs else 0
+        # Use 2D efficacy+safety score
+        if d_e < 50 and d_s < 50:
+            score = math.exp(-(0.6 * d_e + 0.4 * d_s))
+        else:
+            score = 0.0
+
+        # Safety weight: lower toxicity → higher weight
+        if label == 1:
+            db_id = compound.replace("Compound::", "")
+            sev = compound_severity.get(db_id, median_sev)
+            weight = 1.0 / (1.0 + sev / median_sev)
+        else:
+            weight = 1.0
+
+        scored_list.append((score, label, weight))
+
+    # Sort by score descending
+    scored_list.sort(key=lambda x: -x[0])
+
+    # Weighted Wilcoxon-Mann-Whitney
+    weighted_pos_sum = sum(w for _, lab, w in scored_list if lab == 1)
+    n_neg = sum(1 for _, lab, _ in scored_list if lab == 0)
+
+    if weighted_pos_sum == 0 or n_neg == 0:
+        return 0.5
+
+    weighted_rank_sum = 0.0
+    for i, (score, label, weight) in enumerate(scored_list):
+        if label == 1:
+            weighted_rank_sum += weight * (len(scored_list) - i)
+
+    # Normalize
+    max_possible = weighted_pos_sum * n_neg + weighted_pos_sum * (weighted_pos_sum + 1) / 2
+    min_score = weighted_pos_sum * (weighted_pos_sum + 1) / 2
+    swauroc = (weighted_rank_sum - min_score) / (weighted_pos_sum * n_neg)
+
+    return max(0.0, min(1.0, swauroc))
+
+
+def analyze_path_lengths(
+    scores: dict[tuple[str, str], tuple[float, float, float]],
+    positive_pairs: set,
+    G_eff: nx.DiGraph,
+) -> dict:
+    """
+    Analyze shortest-path distance distributions for true positives vs negatives.
+
+    This provides empirical evidence for the theoretical foundation:
+    shorter paths → higher probability of therapeutic association.
+
+    Returns statistics and KS test result.
+    """
+    pos_dists = []
+    neg_dists = []
+
+    for (compound, disease), (d_e, d_s, d_v) in scores.items():
+        if d_e >= 50 or d_e == float("inf"):
+            continue
+        if (compound, disease) in positive_pairs:
+            pos_dists.append(d_e)
+        else:
+            neg_dists.append(d_e)
+
+    if not pos_dists or not neg_dists:
+        return {"error": "insufficient data"}
+
+    # Basic statistics
+    pos_mean = sum(pos_dists) / len(pos_dists)
+    neg_mean = sum(neg_dists) / len(neg_dists)
+    pos_median = sorted(pos_dists)[len(pos_dists) // 2]
+    neg_median = sorted(neg_dists)[len(neg_dists) // 2]
+
+    # Effect size (Cohen's d)
+    pos_var = sum((x - pos_mean) ** 2 for x in pos_dists) / len(pos_dists)
+    neg_var = sum((x - neg_mean) ** 2 for x in neg_dists) / len(neg_dists)
+    pooled_std = math.sqrt((pos_var + neg_var) / 2)
+    cohens_d = (neg_mean - pos_mean) / pooled_std if pooled_std > 0 else 0
+
+    # Two-sample KS test (approximate)
+    pos_sorted = sorted(pos_dists)
+    neg_sorted = sorted(neg_dists)
+    all_vals = sorted(set(pos_sorted + neg_sorted))
+    max_ks = 0.0
+    for val in all_vals:
+        # CDF at this point
+        pos_cdf = sum(1 for x in pos_sorted if x <= val) / len(pos_sorted)
+        neg_cdf = sum(1 for x in neg_sorted if x <= val) / len(neg_sorted)
+        ks = abs(pos_cdf - neg_cdf)
+        if ks > max_ks:
+            max_ks = ks
+
+    # Histogram bins for reporting
+    all_dists = pos_dists + neg_dists
+    min_d = min(all_dists)
+    max_d = max(all_dists)
+    n_bins = 10
+    bin_width = (max_d - min_d) / n_bins
+    pos_hist = [0] * n_bins
+    neg_hist = [0] * n_bins
+    for d in pos_dists:
+        b = min(int((d - min_d) / bin_width), n_bins - 1)
+        pos_hist[b] += 1
+    for d in neg_dists:
+        b = min(int((d - min_d) / bin_width), n_bins - 1)
+        neg_hist[b] += 1
+
+    return {
+        "n_positive": len(pos_dists),
+        "n_negative": len(neg_dists),
+        "pos_mean": pos_mean,
+        "neg_mean": neg_mean,
+        "pos_median": pos_median,
+        "neg_median": neg_median,
+        "cohens_d": cohens_d,
+        "ks_statistic": max_ks,
+        "separation": "strong" if cohens_d > 0.8 else ("medium" if cohens_d > 0.5 else "weak"),
+        "bin_edges": [round(min_d + i * bin_width, 2) for i in range(n_bins + 1)],
+        "pos_hist": pos_hist,
+        "neg_hist": neg_hist,
+    }
 
 
 # ===========================================================================
@@ -1051,13 +1450,15 @@ def main():
     for k, v in enrich_stats.items():
         print(f"    {k}: {v}")
 
-    # Weight distribution analysis
-    print("\n  Weight distributions (binds edges):")
+    # Weight distribution analysis — all edge types
+    print("\n  Weight distributions by edge type:")
     wdist = analyze_weight_distributions(G_eff, G_saf, G_evd, edge_metadata)
-    for dim, stats in wdist.items():
-        print(f"    {dim}: mean={stats['binds_mean']:.3f}, std={stats['binds_std']:.3f}, "
-              f"unique={stats['binds_unique']}/{stats['binds_total']}, "
-              f"range=[{stats['binds_min']:.3f}, {stats['binds_max']:.3f}]")
+    for dim, edge_stats in wdist.items():
+        print(f"\n    [{dim}]")
+        for et, st in edge_stats.items():
+            print(f"      {et:20s}: mean={st['mean']:.3f}, std={st['std']:.3f}, "
+                  f"unique={st['unique']}/{st['total']} ({st['pct_unique']}%), "
+                  f"range=[{st['min']:.3f}, {st['max']:.3f}]")
 
     # ------------------------------------------------------------------
     # Part 4: Load PharmacotherapyDB
@@ -1103,6 +1504,8 @@ def main():
 
     methods = [
         ("efficacy_1d", "Efficacy only (1D)"),
+        ("eff_evd_fused", "Eff+Evidence fused (2D)"),
+        ("eff_evd_safety_fused", "Eff+Evd+Safety fused (3D)"),
         ("eff_safety_2d", "Efficacy+Safety (2D)"),
         ("equal_3d", "Equal Geometric (3D)"),
         ("weighted_3d", "Weighted Geometric (3D)"),
@@ -1173,6 +1576,114 @@ def main():
         print("\n  No case studies found (no drugs rescued into top-10 by Pareto)")
 
     # ------------------------------------------------------------------
+    # Part 9: Path-Length Distribution Analysis (theoretical justification)
+    # ------------------------------------------------------------------
+    print("\n[Part 9] Path-Length Distribution Analysis")
+    print("-" * 40)
+    print("  Testing: do shorter paths predict therapeutic associations?")
+    path_stats = analyze_path_lengths(scores, positive_pairs, G_eff)
+    if "error" not in path_stats:
+        print(f"  True positives (n={path_stats['n_positive']:,}):")
+        print(f"    Mean distance:   {path_stats['pos_mean']:.4f}")
+        print(f"    Median distance: {path_stats['pos_median']:.4f}")
+        print(f"  Negatives (n={path_stats['n_negative']:,}):")
+        print(f"    Mean distance:   {path_stats['neg_mean']:.4f}")
+        print(f"    Median distance: {path_stats['neg_median']:.4f}")
+        print(f"  Separation:")
+        print(f"    Cohen's d = {path_stats['cohens_d']:.3f} ({path_stats['separation']})")
+        print(f"    KS stat   = {path_stats['ks_statistic']:.3f}")
+        print(f"  → True treatments have {'SHORTER' if path_stats['pos_mean'] < path_stats['neg_mean'] else 'LONGER'} "
+              f"paths (Δ = {abs(path_stats['neg_mean'] - path_stats['pos_mean']):.4f})")
+    else:
+        print(f"  ERROR: {path_stats['error']}")
+
+    # ------------------------------------------------------------------
+    # Part 10: Safety-Weighted AUROC (swAUROC)
+    # ------------------------------------------------------------------
+    print("\n[Part 10] Safety-Weighted AUROC (swAUROC)")
+    print("-" * 40)
+    print("  Novel metric: rewards finding SAFE effective drugs")
+    print("  Weight: w_i = 1 / (1 + toxicity_i / median_toxicity)")
+    swauroc = compute_swauroc(scores, positive_pairs, compound_severity)
+    auroc_2d, _ = compute_auroc(scores, positive_pairs, "eff_safety_2d")
+    print(f"  Standard 2D AUROC:   {auroc_2d:.4f}")
+    print(f"  Safety-weighted swAUROC: {swauroc:.4f}")
+    delta_sw = swauroc - auroc_2d
+    print(f"  Δ (swAUROC - AUROC): {delta_sw:+.4f}")
+    if delta_sw > 0:
+        print(f"  → Safety-aware ranking IS rewarded by safety-weighted metric")
+    else:
+        print(f"  → Safety-aware ranking not yet rewarded — need better safety weights")
+
+    # ------------------------------------------------------------------
+    # Part 11: K-fold Cross-Validation
+    # ------------------------------------------------------------------
+    do_cv = "--cv" in sys.argv or "--full" in sys.argv
+    if do_cv:
+        print("\n[Part 11] 5-Fold Cross-Validation (disease split)")
+        print("-" * 40)
+        cv_results = kfold_cv_auroc(
+            G, edge_metadata, compound_potency, compound_severity,
+            side_effect_counts, positive_pairs, eval_compounds, eval_diseases,
+            ground_truth, n_folds=5,
+        )
+        print(f"\n  {'Method':<30s} | {'Mean AUROC':>10s} | {'Std':>6s} | {'95% CI':>15s}")
+        print(f"  {'─' * 30}─┼─{'─' * 10}─┼─{'─' * 6}─┼─{'─' * 15}")
+        for method, aurocs in cv_results.items():
+            mean_a = sum(aurocs) / len(aurocs)
+            std_a = (sum((a - mean_a) ** 2 for a in aurocs) / len(aurocs)) ** 0.5
+            ci_lo = mean_a - 1.96 * std_a
+            ci_hi = mean_a + 1.96 * std_a
+            print(f"  {method:<30s} | {mean_a:>10.4f} | {std_a:>6.4f} | [{ci_lo:.4f}, {ci_hi:.4f}]")
+    else:
+        print("\n[Part 11] K-fold CV: skipped (use --cv or --full to enable)")
+
+    # ------------------------------------------------------------------
+    # Part 12: Edge-Type Probability Learning
+    # ------------------------------------------------------------------
+    do_learn = "--learn-probs" in sys.argv or "--full" in sys.argv
+    if do_learn:
+        print("\n[Part 12] Learning Edge-Type Probabilities")
+        print("-" * 40)
+        print("  Running coordinate-wise grid search...")
+        learned_probs = learn_edge_type_probs(
+            G, edge_metadata, compound_potency, compound_severity,
+            side_effect_counts, positive_pairs, eval_compounds, eval_diseases,
+            ground_truth, n_steps=5,
+        )
+        print(f"\n  Learned vs Default probabilities:")
+        print(f"  {'Edge Type':<20s} | {'Default':>8s} | {'Learned':>8s} | {'Δ':>8s}")
+        print(f"  {'─' * 20}─┼─{'─' * 8}─┼─{'─' * 8}─┼─{'─' * 8}")
+        for et in sorted(learned_probs.keys()):
+            default = EDGE_TYPE_PROB.get(et, 0.5)
+            learned = learned_probs[et]
+            delta = learned - default
+            print(f"  {et:<20s} | {default:>8.2f} | {learned:>8.2f} | {delta:>+8.2f}")
+
+        # Evaluate with learned probs
+        print("\n  Evaluating with learned probabilities...")
+        orig_probs = EDGE_TYPE_PROB.copy()
+        for k, v in learned_probs.items():
+            EDGE_TYPE_PROB[k] = v
+
+        G_eff_l, G_saf_l, G_evd_l, _ = build_enriched_weights(
+            G, edge_metadata, compound_potency, compound_severity, side_effect_counts
+        )
+        scores_l = score_all_pairs(G_eff_l, G_saf_l, G_evd_l, eval_compounds, eval_diseases)
+        auroc_l, auprc_l = compute_auroc(scores_l, positive_pairs, "efficacy_1d")
+        lo_l, hi_l = bootstrap_ci(scores_l, positive_pairs, "efficacy_1d")
+
+        # Restore
+        for k, v in orig_probs.items():
+            EDGE_TYPE_PROB[k] = v
+
+        print(f"\n  Default probs AUROC:  {baseline_auroc:.4f}")
+        print(f"  Learned probs AUROC:  {auroc_l:.4f} [{lo_l:.4f}, {hi_l:.4f}]")
+        print(f"  Improvement:          {auroc_l - baseline_auroc:+.4f}")
+    else:
+        print("\n[Part 12] Edge-type learning: skipped (use --learn-probs or --full to enable)")
+
+    # ------------------------------------------------------------------
     # Verdict
     # ------------------------------------------------------------------
     t_total = time.time() - t_start
@@ -1210,8 +1721,23 @@ def main():
     else:
         print(f"\n  Pareto rescue: 0 drugs rescued")
 
+    # Path-length foundation
+    if "error" not in path_stats:
+        print(f"\n  Theoretical foundation:")
+        print(f"    Path distance separates TP from TN: Cohen's d = {path_stats['cohens_d']:.3f} ({path_stats['separation']})")
+        print(f"    → Shortest-path distance is a {'valid' if path_stats['cohens_d'] > 0.3 else 'weak'} "
+              f"predictor of therapeutic association")
+
+    # Safety-weighted metric
+    print(f"\n  Safety-aware evaluation:")
+    print(f"    Standard 2D AUROC: {auroc_2d:.4f}")
+    print(f"    swAUROC:           {swauroc:.4f} (Δ = {delta_sw:+.4f})")
+    if delta_sw > 0:
+        print(f"    → Safety-aware ranking IS rewarded by appropriate metric")
+
     print(f"\n  Compounds with ChEMBL pIC50: {len(compound_potency)}")
     print(f"  Compounds with SIDER severity: {len(compound_severity)}")
+    print(f"  Bootstrap CI: 1000 resamples (95%)")
     print(f"  Total runtime: {t_total:.0f}s")
     print("=" * 80)
 

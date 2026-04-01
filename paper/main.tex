@@ -114,6 +114,14 @@ fundamental limitations:
     severe known toxicity is not clinically actionable.
 \end{enumerate}
 
+\citet{himmelstein2017systematic} demonstrated that path-based features
+on Hetionet can achieve strong repurposing accuracy (AUROC~0.97) via
+Degree-Weighted Path Counts (DWPC) combined with supervised logistic
+regression over 1,206 metapath features. However, DWPC requires
+training on known indications and produces a feature importance
+vector rather than a single interpretable mechanism. It also operates
+in a single-objective framework with no explicit safety dimension.
+
 We propose an alternative paradigm: \emph{shortest-path casting}.
 Rather than learning latent embeddings, we transform the drug
 repurposing problem into a shortest-path problem on the knowledge graph:
@@ -613,6 +621,35 @@ provably finds optimal paths (no approximation or stochastic training).
 
 \paragraph{Limitations.}
 
+\textit{Edge independence assumption.}
+The weight transformation $w(e) = -\log p(e)$ converts path costs to
+joint probabilities under the assumption that edge transmission
+probabilities are conditionally independent along a path. In biological
+networks, this assumption is often violated: if gene~A and gene~B both
+interact with gene~C, they are likely to interact with each other,
+introducing positive correlation. This means our path probabilities may
+overestimate the actual joint probability of signal transmission along
+multi-hop paths. We note that this assumption is standard in
+probabilistic shortest-path methods and that our evaluation is
+comparative (ranking drugs against each other), which is less sensitive
+to absolute probability calibration than threshold-based classification.
+
+\textit{Comparison with DWPC.}
+\citet{himmelstein2017systematic} applied Degree-Weighted Path Count
+(DWPC) to the same Hetionet + PharmacotherapyDB setup and reported
+AUROC~0.97. Our single-objective AUROC of 0.77 is substantially lower.
+However, the comparison is not direct: DWPC uses a logistic regression
+over 1,206 metapath-based features (all path types up to length~4,
+weighted by node degree), while our method uses a single shortest-path
+distance per dimension. DWPC effectively learns an optimal linear
+combination of all topological features, making it a supervised method,
+whereas our framework is unsupervised (no training on the evaluation
+labels). Furthermore, our method provides a single interpretable path
+per prediction, while DWPC provides a feature importance vector across
+metapaths. The approaches are complementary: DWPC optimizes prediction
+accuracy, while our framework optimizes interpretability and
+multi-objective trade-off analysis.
+
 \textit{Binary graph structure.}
 Hetionet encodes relationships as binary (present/absent) edges. Our
 efficacy modulation (Equation~\ref{eq:efficacy}) adds continuous
@@ -804,7 +841,7 @@ scripts are publicly available.
 \subsection{One-Paragraph Elevator Pitch}
 
 \optim{} is the first practical implementation of the STOC~2025
-Best Paper algorithm for shortest paths, packaged as a
+Best Paper Award algorithm for shortest paths, packaged as a
 production-quality Julia library with 2{,}220 automated tests and
 deployed on a real drug repurposing pipeline.  On the Hetionet
 biomedical knowledge graph (47K nodes, 2.25M edges), it runs
