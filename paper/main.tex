@@ -59,8 +59,10 @@ achieving 38--322$\times$ speedup over Dijkstra on graphs with
 indications), our single-objective efficacy model achieves AUROC 0.7727.
 We extend this to a multi-objective Pareto framework incorporating a
 bias-corrected safety dimension derived from SIDER~4.1 label frequencies
-weighted by CTCAE~v5.0 severity grades, recovering 4 clinically
-validated treatments in the top-50 that single-objective ranking misses.
+weighted by CTCAE~v5.0 severity grades. A systematic analysis across all
+137 Hetionet diseases shows that 47 PharmacotherapyDB-validated treatments
+appear in the Pareto top-50 but are missed by single-objective efficacy
+ranking, with rank improvements of up to +247 positions.
 We provide \chempath{}, an open-source interactive agent built on the
 framework, enabling researchers to query drug--disease hypotheses
 conversationally with full path-based explanations.
@@ -170,12 +172,14 @@ $\BigO{(m+n) \log n}$.
     grades, addressing the well-known reporting bias in raw
     side-effect counts (Section~\ref{sec:methods:safety}).
 
-    \item We demonstrate multi-objective Pareto drug repurposing that
-    recovers 4 clinically validated treatments missed by
-    single-objective ranking (Section~\ref{sec:results:pareto}).
+    \item We demonstrate multi-objective Pareto drug repurposing through
+    a systematic analysis across all 137 Hetionet diseases, recovering
+    47 PharmacotherapyDB-validated treatments in the top-50 that
+    single-objective ranking misses, with rank improvements of up to
+    +247 positions (Section~\ref{sec:results:pareto}).
 
     \item We release \optim{} (Julia) and \chempath{} (Python) as
-    open-source tools with 688+ test assertions and comprehensive
+    open-source tools with 2{,}044 test assertions and comprehensive
     documentation.
 \end{enumerate}
 
@@ -540,50 +544,85 @@ However, this cost buys clinically valuable safety awareness, as
 demonstrated by the Pareto analysis below.
 
 % ----------------------------------------------------------------------------
-\subsection{Pareto-Rescued Drug Repurposing Candidates}
+\subsection{Systematic Pareto-Rescued Drug Repurposing}
 \label{sec:results:pareto}
 % ----------------------------------------------------------------------------
 
 The Pareto framework identifies drug--disease pairs that are optimal
-across both efficacy and safety dimensions simultaneously. We find that
-4 clinically validated treatments (confirmed in PharmacotherapyDB) appear
-in the top-50 Pareto-ranked candidates but are missed by single-objective
-efficacy ranking. Table~\ref{tab:pareto} details three case studies.
+across both efficacy and safety dimensions simultaneously. We perform
+a systematic analysis across \emph{all} 137 Hetionet diseases, computing
+the difference between top-50 rankings under single-objective (efficacy
+only) and multi-objective (efficacy~+~safety) Pareto-aware composite
+scoring. Table~\ref{tab:pareto_summary} reports aggregate statistics.
 
 \begin{table}[t]
 \centering
-\caption{Pareto-rescued drugs: clinically validated treatments
-recovered by multi-objective ranking. Efficacy rank = position in
-single-objective ranking; Pareto rank = position after multi-objective
-Pareto analysis.}
-\label{tab:pareto}
-\begin{tabular}{llccc}
+\caption{Systematic Pareto rescue across all 137 Hetionet diseases.
+Rescued candidates are compounds that appear in the top-50 of Pareto
+ranking but not in the top-50 of single-objective efficacy ranking.
+Validated rescues are confirmed in PharmacotherapyDB.}
+\label{tab:pareto_summary}
+\begin{tabular}{lr}
 \toprule
-\textbf{Drug} & \textbf{Disease} &
-\textbf{Eff.\ rank} & \textbf{Pareto rank} & \textbf{$\Delta$} \\
+\textbf{Metric} & \textbf{Value} \\
 \midrule
-Cytarabine    & Leukemia         & 24  & 6 & +18 \\
-Moexipril     & Hypertension     & 12  & 5 & +7 \\
-Chlorambucil  & Breast cancer    & 111 & 6 & +105 \\
+Total diseases analyzed                 & 137 \\
+Diseases with any rescue                & 136 (99.3\%) \\
+Diseases with PharmacotherapyDB-validated rescue & 28 (20.4\%) \\
+Total rescued candidates                & 3{,}378 \\
+Total validated rescues                 & 47 \\
+Mean rescues per disease                & 24.7 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Case study: Chlorambucil.}
-In single-objective efficacy ranking, Chlorambucil (DB00291) ranks 111th
-for breast cancer---effectively invisible in a top-50 screening panel.
-The multi-objective Pareto analysis promotes it to rank 6 because
-Chlorambucil has a favorable safety profile relative to other
-alkylating agents. The shortest path from Chlorambucil to breast cancer
-traverses GSTP1 (Glutathione S-transferase Pi 1), a known mediator of
-alkylating agent resistance in breast cancer \citep{tew1994glutathione},
-providing mechanistic justification for the prediction.
+The systematic analysis reveals that 47 PharmacotherapyDB-validated
+treatments appear in the Pareto top-50 but are missed by single-objective
+ranking, distributed across 28 of 137 diseases (20.4\%). This is
+substantially stronger than anecdotal case studies and addresses the
+question of whether Pareto rescue is a real phenomenon or cherry-picked.
+Table~\ref{tab:pareto_top} shows the largest rank improvements.
 
-\paragraph{Case study: Cytarabine.}
-Cytarabine (DB00987) ranks 24th by efficacy alone but 6th in the Pareto
-ranking for leukemia. The efficacy path traverses RRP8 (ribosomal RNA
-processing 8), consistent with Cytarabine's known mechanism of
-disrupting DNA synthesis in rapidly dividing leukemic cells.
+\begin{table}[t]
+\centering
+\caption{Top Pareto-rescued drugs by rank improvement. Drug IDs are
+DrugBank identifiers; disease IDs are Disease Ontology (DOID) terms.
+Eff.\ rank = position in single-objective efficacy ranking; Pareto
+rank = position after Pareto-aware composite scoring.}
+\label{tab:pareto_top}
+\begin{tabular}{lllcc}
+\toprule
+\textbf{Drug} & \textbf{Disease (DOID)} & \textbf{Indication} &
+\textbf{Eff.\ rank} & \textbf{Pareto rank} \\
+\midrule
+DB08871  & DOID:1612    & Breast cancer       & 292 & 45 \\
+DB00987  & DOID:2531    & Hematologic cancer  & 198 & 18 \\
+DB00563  & DOID:2998    & Testicular cancer   & 183 & 40 \\
+DB00350  & DOID:10763   & Hypertension        & 153 & 27 \\
+DB01076  & DOID:10763   & Hypertension        & 138 & 19 \\
+DB01047  & DOID:3310    & Lung cancer         & 140 & 29 \\
+DB00563  & DOID:1324    & Lung cancer         & 114 & 11 \\
+DB00563  & DOID:2531    & Hematologic cancer  & 95  & 9  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Case study: largest rescue (DB08871, breast cancer).}
+The largest single rescue improvement is DrugBank ID DB08871 for breast
+cancer (DOID:1612), promoted from rank~292 in single-objective efficacy
+ranking to rank~45 in Pareto-aware composite ranking---a +247-position
+improvement. The drug is invisible in any reasonable top-50 screen under
+the efficacy-only baseline, but the Pareto framework surfaces it because
+its safety profile is favorable relative to other compounds with
+comparable efficacy distance.
+
+\paragraph{Case study: methotrexate (DB00563).}
+Methotrexate appears in 11 of the 47 validated rescues, including
+indications for testicular cancer, lung cancer, hematologic cancer, and
+several others. This pattern reflects methotrexate's well-characterized
+clinical profile: moderate efficacy across many cancer types combined
+with manageable, dose-titrated toxicity---exactly the profile that
+single-objective efficacy ranking systematically underweights.
 
 % ----------------------------------------------------------------------------
 \subsection{Path Interpretability}
@@ -752,10 +791,10 @@ our framework offers two concrete advantages:
     virtual screens rank by predicted efficacy alone.  Our Pareto
     framework explicitly surfaces the efficacy--safety trade-off,
     allowing teams to deprioritize candidates with high predicted
-    toxicity before committing to preclinical work.  The 4 Pareto
-    rescues in Section~\ref{sec:results:pareto} demonstrate that
-    safety-aware ranking identifies candidates that efficacy-only
-    screening misses.
+    toxicity before committing to preclinical work.  The 47 validated
+    Pareto rescues across 28 diseases (Section~\ref{sec:results:pareto})
+    demonstrate that safety-aware ranking identifies candidates that
+    efficacy-only screening misses.
 
     \item \textbf{Mechanistic audit trail.}  Regulatory submissions
     benefit from documented rationale.  Unlike black-box scores,
@@ -842,7 +881,7 @@ scripts are publicly available.
 
 \optim{} is the first practical implementation of the STOC~2025
 Best Paper Award algorithm for shortest paths, packaged as a
-production-quality Julia library with 2{,}220 automated tests and
+production-quality Julia library with 2{,}044 automated tests and
 deployed on a real drug repurposing pipeline.  On the Hetionet
 biomedical knowledge graph (47K nodes, 2.25M edges), it runs
 38--322$\times$ faster than Dijkstra and produces interpretable,
@@ -871,7 +910,7 @@ and regulators can audit.
     built into the core, not bolted on.  Adding a new clinical
     dimension requires only a new weight function.
 
-    \item \textbf{Production engineering.}  2{,}220 tests,
+    \item \textbf{Production engineering.}  2{,}044 tests,
     Documenter.jl site, GitHub Actions CI, Julia General registry
     readiness, TagBot, CompatHelper.
 \end{enumerate}
@@ -882,7 +921,7 @@ and regulators can audit.
 \toprule
 \textbf{Metric} & \textbf{Value} \\
 \midrule
-Test assertions & 2{,}220 (13 test files) \\
+Test assertions & 2{,}044 (13 test files) \\
 Julia version support & $\geq$1.9 \\
 Dependencies & 2 runtime (DataStructures, JSON) \\
 Documentation & Hosted Documenter.jl site with API, cheatsheet, benchmarks \\
