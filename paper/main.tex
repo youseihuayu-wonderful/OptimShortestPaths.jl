@@ -21,6 +21,7 @@
 \usepackage{url}
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\graphicspath{{figures/}}
 
 % --- Macros ---
 \newcommand{\BigO}[1]{\mathcal{O}(#1)}
@@ -531,6 +532,18 @@ ComplEx \citep{trouillon2016complex}   & 0.587 & --- & 0.019 & unsupervised \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_method_comparison.pdf}
+\caption{AUROC (95\% bootstrap CI) and AUPRC for our shortest-path
+casting methods (blue) vs.\ KGE baselines (magenta) on the drug
+repurposing task. KGE baselines (TransE, ComplEx) were trained on the
+identical Hetionet triples with the same evaluation protocol via PyKEEN.
+Dotted vertical lines mark random-baseline AUROC (0.5) and AUPRC
+(prevalence = 1.4\%).}
+\label{fig:auroc}
+\end{figure}
+
 Four key findings emerge:
 
 \begin{enumerate}
@@ -635,6 +648,17 @@ DB00563  & DOID:2531    & Hematologic cancer  & 95  & 9  \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{fig_pareto_scatter.pdf}
+\caption{Two-dimensional (efficacy, safety) cost space for all 387
+evaluation compounds against breast cancer (DOID:1612), computed live
+on Hetionet v1.0. Grey dots = non-indications; magenta dots =
+PharmacotherapyDB-confirmed indications; dashed line = Pareto front.
+Lower-left is better in both dimensions.}
+\label{fig:pareto_scatter}
+\end{figure}
+
 \paragraph{Case study: largest rescue (DB08871, breast cancer).}
 The largest single rescue improvement is DrugBank ID DB08871 for breast
 cancer (DOID:1612), promoted from rank~292 in single-objective efficacy
@@ -710,15 +734,46 @@ Spread & 0.010 & 0.014 \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[t]
+\centering
+\begin{minipage}[b]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{fig_cv_folds.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{fig_sensitivity.pdf}
+\end{minipage}
+\caption{Robustness analyses. \textbf{Left:} 5-fold cross-validation
+with disease-level splits. Dots = per-fold AUROC; solid line = mean;
+shaded band = $\pm 1$ standard deviation. \textbf{Right:} Sensitivity
+of AUROC and AUPRC to $p_\text{base}(\textsc{binds})$ with all other
+parameters fixed.}
+\label{fig:robustness}
+\end{figure}
+
 \paragraph{Path length distributions confirm mechanism hypothesis.}
 If shortest-path distance is genuinely informative for therapeutic
 association, we expect true-positive drug--disease pairs to have
-systematically shorter paths than true negatives. On the full test
-set (755 positives, 51{,}877 negatives), positive pairs have mean
-path length 1.35 vs.\ negative 1.81. This corresponds to Cohen's
-$d = 1.16$ (large effect size) and a Kolmogorov--Smirnov statistic
-of 0.445, indicating strong separation between the two distributions
-and empirically validating the shortest-path casting assumption.
+systematically shorter paths than true negatives. Figure~\ref{fig:pathlen}
+plots within-class density of shortest-path efficacy distance for both
+populations. On the full test set (755 positives, 51{,}877 negatives),
+positive pairs have mean path length 1.35 vs.\ negative 1.81. This
+corresponds to Cohen's $d = 1.16$ (large effect size) and a
+Kolmogorov--Smirnov statistic of 0.445, indicating strong separation
+between the two distributions and empirically validating the
+shortest-path casting assumption.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\linewidth]{fig_path_length.pdf}
+\caption{Distribution of shortest-path efficacy distance for
+PharmacotherapyDB-confirmed positive pairs (blue) vs.\ negatives
+(magenta). Dashed lines show within-class means. Positives are
+systematically shorter (Cohen's $d = 1.16$).}
+\label{fig:pathlen}
+\end{figure}
 
 % ----------------------------------------------------------------------------
 \subsection{Path Interpretability}
