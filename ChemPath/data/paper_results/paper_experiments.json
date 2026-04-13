@@ -1,0 +1,497 @@
+{
+  "method_comparison": {
+    "efficacy_1d": {
+      "auroc": 0.7981401858927117,
+      "auprc": 0.07849313507602193,
+      "ci_lo": 0.7847867798221679,
+      "ci_hi": 0.8114704535406783
+    },
+    "eff_safety_2d": {
+      "auroc": 0.7297847504721318,
+      "auprc": 0.0486572139664206,
+      "ci_lo": 0.7139020596459531,
+      "ci_hi": 0.743957392468932
+    },
+    "weighted_3d": {
+      "auroc": 0.7674428753460526,
+      "auprc": 0.07033616321428399,
+      "ci_lo": 0.7538681691207187,
+      "ci_hi": 0.7806711082990986
+    },
+    "eff_evd_fused": {
+      "auroc": 0.8056303301729477,
+      "auprc": 0.08809083562535558,
+      "ci_lo": 0.793070032355999,
+      "ci_hi": 0.8193967190827436
+    },
+    "eff_evd_safety_fused": {
+      "auroc": 0.7950308064102473,
+      "auprc": 0.08523959296304477,
+      "ci_lo": 0.7830385855664969,
+      "ci_hi": 0.8073695455819603
+    }
+  },
+  "hits_at_k": {
+    "efficacy_1d": {
+      "10": 0.38961038961038963,
+      "50": 0.7922077922077922,
+      "100": 0.8181818181818182
+    },
+    "eff_safety_2d": {
+      "10": 0.37662337662337664,
+      "50": 0.7272727272727273,
+      "100": 0.7922077922077922
+    }
+  },
+  "path_length_analysis": {
+    "n_positive": 755,
+    "n_negative": 51877,
+    "pos_mean": 1.3509417469488523,
+    "neg_mean": 1.8088865306749262,
+    "pos_median": 1.116761361718275,
+    "neg_median": 1.8719952115906402,
+    "cohens_d": 1.1551994655016182,
+    "ks_statistic": 0.4451958510623767,
+    "separation": "strong",
+    "bin_edges": [
+      0.61,
+      0.89,
+      1.17,
+      1.45,
+      1.73,
+      2.01,
+      2.29,
+      2.57,
+      2.85,
+      3.13,
+      3.41
+    ],
+    "pos_hist": [
+      6,
+      422,
+      27,
+      69,
+      202,
+      25,
+      2,
+      2,
+      0,
+      0
+    ],
+    "neg_hist": [
+      54,
+      7718,
+      1106,
+      4516,
+      23677,
+      12655,
+      1120,
+      828,
+      198,
+      5
+    ]
+  },
+  "cross_validation": {
+    "efficacy_1d": {
+      "mean": 0.7952003867196022,
+      "std": 0.023793806372811508,
+      "folds": [
+        0.8311867103867296,
+        0.7681645574811158,
+        0.785139477473328,
+        0.8040257491373699,
+        0.787485439119468
+      ]
+    },
+    "eff_safety_2d": {
+      "mean": 0.7184615288599121,
+      "std": 0.025109715583731537,
+      "folds": [
+        0.7140153341691581,
+        0.7125317373744712,
+        0.7053690379594815,
+        0.7619783268166289,
+        0.6984132079798211
+      ]
+    },
+    "weighted_3d": {
+      "mean": 0.7583774099287094,
+      "std": 0.024135059016408788,
+      "folds": [
+        0.7690194329250651,
+        0.7382286122023833,
+        0.7492698444128301,
+        0.795564528138123,
+        0.7398046319651456
+      ]
+    }
+  },
+  "pbase_sensitivity": [
+    {
+      "p_binds": 0.5,
+      "auroc_1d": 0.8017496753618664,
+      "auprc_1d": 0.07626847090223815,
+      "auroc_2d": 0.7379573951096978,
+      "auprc_2d": 0.043014089952009206
+    },
+    {
+      "p_binds": 0.6,
+      "auroc_1d": 0.8026589409042021,
+      "auprc_1d": 0.07752301509957005,
+      "auroc_2d": 0.7356040347375474,
+      "auprc_2d": 0.04544964026510798
+    },
+    {
+      "p_binds": 0.7,
+      "auroc_1d": 0.7988774008269782,
+      "auprc_1d": 0.0776707813692802,
+      "auroc_2d": 0.7316528769375651,
+      "auprc_2d": 0.047351719796507256
+    },
+    {
+      "p_binds": 0.8,
+      "auroc_1d": 0.7981401858927117,
+      "auprc_1d": 0.07849313507602193,
+      "auroc_2d": 0.7297847504721318,
+      "auprc_2d": 0.0486572139664206
+    },
+    {
+      "p_binds": 0.9,
+      "auroc_1d": 0.793158244997633,
+      "auprc_1d": 0.08964729559356588,
+      "auroc_2d": 0.7220599594721855,
+      "auprc_2d": 0.0482604012108844
+    }
+  ],
+  "pareto_rescue": {
+    "total_diseases": 137,
+    "diseases_with_any_rescue": 136,
+    "diseases_with_validated_rescue": 27,
+    "total_rescued_candidates": 3369,
+    "total_validated_rescues": 46,
+    "validated_rescue_details": [
+      {
+        "drug": "Compound::DB08871",
+        "disease": "Disease::DOID:1612",
+        "eff_rank": 270,
+        "pareto_rank": 45,
+        "delta": 225
+      },
+      {
+        "drug": "Compound::DB00987",
+        "disease": "Disease::DOID:2531",
+        "eff_rank": 196,
+        "pareto_rank": 17,
+        "delta": 179
+      },
+      {
+        "drug": "Compound::DB00350",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 154,
+        "pareto_rank": 8,
+        "delta": 146
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:2998",
+        "eff_rank": 183,
+        "pareto_rank": 40,
+        "delta": 143
+      },
+      {
+        "drug": "Compound::DB01076",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 137,
+        "pareto_rank": 20,
+        "delta": 117
+      },
+      {
+        "drug": "Compound::DB01047",
+        "disease": "Disease::DOID:3310",
+        "eff_rank": 145,
+        "pareto_rank": 30,
+        "delta": 115
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:1324",
+        "eff_rank": 112,
+        "pareto_rank": 11,
+        "delta": 101
+      },
+      {
+        "drug": "Compound::DB00987",
+        "disease": "Disease::DOID:0060073",
+        "eff_rank": 107,
+        "pareto_rank": 14,
+        "delta": 93
+      },
+      {
+        "drug": "Compound::DB00523",
+        "disease": "Disease::DOID:1192",
+        "eff_rank": 124,
+        "pareto_rank": 39,
+        "delta": 85
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:9074",
+        "eff_rank": 100,
+        "pareto_rank": 19,
+        "delta": 81
+      },
+      {
+        "drug": "Compound::DB00501",
+        "disease": "Disease::DOID:9970",
+        "eff_rank": 114,
+        "pareto_rank": 34,
+        "delta": 80
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:2531",
+        "eff_rank": 84,
+        "pareto_rank": 9,
+        "delta": 75
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:7148",
+        "eff_rank": 94,
+        "pareto_rank": 21,
+        "delta": 73
+      },
+      {
+        "drug": "Compound::DB01260",
+        "disease": "Disease::DOID:3310",
+        "eff_rank": 95,
+        "pareto_rank": 28,
+        "delta": 67
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:10534",
+        "eff_rank": 75,
+        "pareto_rank": 12,
+        "delta": 63
+      },
+      {
+        "drug": "Compound::DB00999",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 87,
+        "pareto_rank": 28,
+        "delta": 59
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:8893",
+        "eff_rank": 102,
+        "pareto_rank": 43,
+        "delta": 59
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:2377",
+        "eff_rank": 71,
+        "pareto_rank": 14,
+        "delta": 57
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:5041",
+        "eff_rank": 69,
+        "pareto_rank": 12,
+        "delta": 57
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:9008",
+        "eff_rank": 90,
+        "pareto_rank": 33,
+        "delta": 57
+      },
+      {
+        "drug": "Compound::DB00695",
+        "disease": "Disease::DOID:12930",
+        "eff_rank": 91,
+        "pareto_rank": 35,
+        "delta": 56
+      },
+      {
+        "drug": "Compound::DB00227",
+        "disease": "Disease::DOID:1936",
+        "eff_rank": 92,
+        "pareto_rank": 36,
+        "delta": 56
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:1612",
+        "eff_rank": 66,
+        "pareto_rank": 15,
+        "delta": 51
+      },
+      {
+        "drug": "Compound::DB00973",
+        "disease": "Disease::DOID:1936",
+        "eff_rank": 82,
+        "pareto_rank": 32,
+        "delta": 50
+      },
+      {
+        "drug": "Compound::DB00659",
+        "disease": "Disease::DOID:0050741",
+        "eff_rank": 64,
+        "pareto_rank": 15,
+        "delta": 49
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:0060073",
+        "eff_rank": 57,
+        "pareto_rank": 9,
+        "delta": 48
+      },
+      {
+        "drug": "Compound::DB00492",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 61,
+        "pareto_rank": 13,
+        "delta": 48
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:219",
+        "eff_rank": 55,
+        "pareto_rank": 7,
+        "delta": 48
+      },
+      {
+        "drug": "Compound::DB01076",
+        "disease": "Disease::DOID:3393",
+        "eff_rank": 61,
+        "pareto_rank": 13,
+        "delta": 48
+      },
+      {
+        "drug": "Compound::DB01234",
+        "disease": "Disease::DOID:2377",
+        "eff_rank": 81,
+        "pareto_rank": 34,
+        "delta": 47
+      },
+      {
+        "drug": "Compound::DB01359",
+        "disease": "Disease::DOID:3393",
+        "eff_rank": 88,
+        "pareto_rank": 42,
+        "delta": 46
+      },
+      {
+        "drug": "Compound::DB01045",
+        "disease": "Disease::DOID:1024",
+        "eff_rank": 52,
+        "pareto_rank": 7,
+        "delta": 45
+      },
+      {
+        "drug": "Compound::DB00221",
+        "disease": "Disease::DOID:2841",
+        "eff_rank": 51,
+        "pareto_rank": 8,
+        "delta": 43
+      },
+      {
+        "drug": "Compound::DB00250",
+        "disease": "Disease::DOID:9074",
+        "eff_rank": 72,
+        "pareto_rank": 35,
+        "delta": 37
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:4045",
+        "eff_rank": 55,
+        "pareto_rank": 22,
+        "delta": 33
+      },
+      {
+        "drug": "Compound::DB00328",
+        "disease": "Disease::DOID:13189",
+        "eff_rank": 60,
+        "pareto_rank": 28,
+        "delta": 32
+      },
+      {
+        "drug": "Compound::DB01098",
+        "disease": "Disease::DOID:1936",
+        "eff_rank": 53,
+        "pareto_rank": 25,
+        "delta": 28
+      },
+      {
+        "drug": "Compound::DB01359",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 54,
+        "pareto_rank": 29,
+        "delta": 25
+      },
+      {
+        "drug": "Compound::DB00275",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 60,
+        "pareto_rank": 37,
+        "delta": 23
+      },
+      {
+        "drug": "Compound::DB00563",
+        "disease": "Disease::DOID:2994",
+        "eff_rank": 52,
+        "pareto_rank": 30,
+        "delta": 22
+      },
+      {
+        "drug": "Compound::DB01005",
+        "disease": "Disease::DOID:8893",
+        "eff_rank": 63,
+        "pareto_rank": 45,
+        "delta": 18
+      },
+      {
+        "drug": "Compound::DB01098",
+        "disease": "Disease::DOID:3393",
+        "eff_rank": 55,
+        "pareto_rank": 39,
+        "delta": 16
+      },
+      {
+        "drug": "Compound::DB00790",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 64,
+        "pareto_rank": 49,
+        "delta": 15
+      },
+      {
+        "drug": "Compound::DB01248",
+        "disease": "Disease::DOID:1793",
+        "eff_rank": 53,
+        "pareto_rank": 41,
+        "delta": 12
+      },
+      {
+        "drug": "Compound::DB00187",
+        "disease": "Disease::DOID:10763",
+        "eff_rank": 51,
+        "pareto_rank": 41,
+        "delta": 10
+      },
+      {
+        "drug": "Compound::DB00700",
+        "disease": "Disease::DOID:3393",
+        "eff_rank": 52,
+        "pareto_rank": 43,
+        "delta": 9
+      }
+    ]
+  }
+}
