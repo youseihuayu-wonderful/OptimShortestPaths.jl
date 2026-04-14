@@ -19,6 +19,8 @@
 \usepackage{subcaption}
 \usepackage{natbib}
 \usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc,backgrounds}
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 \graphicspath{{figures/}}
@@ -127,9 +129,10 @@ training on known indications and produces a feature importance
 vector rather than a single interpretable mechanism. It also operates
 in a single-objective framework with no explicit safety dimension.
 
-We propose an alternative paradigm: \emph{shortest-path casting}.
-Rather than learning latent embeddings, we transform the drug
-repurposing problem into a shortest-path problem on the knowledge graph:
+We propose an alternative paradigm: \emph{shortest-path casting}
+(Figure~\ref{fig:overview}). Rather than learning latent embeddings,
+we transform the drug repurposing problem into a shortest-path
+problem on the knowledge graph:
 
 \begin{itemize}
     \item \textbf{Entities $\to$ Vertices}: Drugs, diseases, genes,
@@ -185,6 +188,116 @@ $\BigO{(m+n) \log n}$.
     open-source tools with 2{,}044 test assertions and comprehensive
     documentation.
 \end{enumerate}
+
+% --- Figure 1: Framework overview ---
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    font=\footnotesize,
+    node distance=7mm,
+    % Node styles
+    kg/.style={
+        rectangle, rounded corners=2pt, draw=black!60, fill=blue!8,
+        minimum width=2.3cm, minimum height=1.1cm, align=center,
+        inner sep=3pt
+    },
+    cast/.style={
+        rectangle, rounded corners=2pt, draw=orange!80!black, fill=orange!12,
+        minimum width=2.3cm, minimum height=1.1cm, align=center, inner sep=3pt
+    },
+    graph/.style={
+        rectangle, rounded corners=2pt, draw=black!60, fill=white,
+        minimum width=1.8cm, minimum height=0.9cm, align=center, inner sep=2pt
+    },
+    dmy/.style={
+        rectangle, rounded corners=2pt, draw=black!80, fill=green!12,
+        minimum width=2.3cm, minimum height=1.1cm, align=center, inner sep=3pt
+    },
+    pareto/.style={
+        rectangle, rounded corners=2pt, draw=black!80, fill=purple!12,
+        minimum width=2.3cm, minimum height=1.1cm, align=center, inner sep=3pt
+    },
+    outnode/.style={
+        rectangle, rounded corners=2pt, draw=black!80, fill=red!10,
+        minimum width=2.6cm, minimum height=1.1cm, align=center, inner sep=3pt
+    },
+    arr/.style={-{Stealth[length=2mm]}, thick, black!70},
+    flabel/.style={font=\scriptsize\itshape, text=black!60, midway, above},
+]
+% Column 1: Input
+\node[kg] (kg) {
+    \textbf{Hetionet v1.0}\\
+    47K nodes, 2.25M\\
+    edges (11 types)
+};
+
+% Column 2: Problem casting
+\node[cast, right=9mm of kg] (cast) {
+    \textbf{Problem casting}\\
+    \scriptsize entities $\to$ $V$\\
+    \scriptsize relations $\to$ $E$\\
+    \scriptsize objectives $\to w(e)$
+};
+
+% Column 3: Three weighted graphs (stacked)
+\node[graph, right=12mm of cast, yshift=10mm] (geff) {$G_\text{eff}$};
+\node[graph, below=2mm of geff] (gsaf) {$G_\text{saf}$};
+\node[graph, below=2mm of gsaf] (gevd) {$G_\text{evd}$};
+
+% Brace + label for weight transform
+\node[above=1mm of geff, font=\scriptsize\itshape, text=black!60] {
+    $w(e) = -\log p(e)$
+};
+
+% Column 4: DMY
+\node[dmy, right=14mm of gsaf] (dmy) {
+    \textbf{DMY SSSP}\\
+    \scriptsize $\mathcal{O}(m \log^{2/3} n)$\\
+    \scriptsize STOC 2025
+};
+
+% Column 5: Pareto
+\node[pareto, right=9mm of dmy] (par) {
+    \textbf{Pareto analysis}\\
+    \scriptsize 2D cost space\\
+    \scriptsize non-dominated set
+};
+
+% Column 6: Output
+\node[outnode, right=9mm of par] (out) {
+    \textbf{Ranked drugs}\\
+    \scriptsize + shortest path\\
+    \scriptsize (interpretable)
+};
+
+% Arrows
+\draw[arr] (kg) -- (cast);
+\draw[arr] (cast.east) -- ($(geff.west)+(0,0)$);
+\draw[arr] (cast.east) -- ($(gsaf.west)+(0,0)$);
+\draw[arr] (cast.east) -- ($(gevd.west)+(0,0)$);
+\draw[arr] (geff) -- ++(1.0,0) |- (dmy.west);
+\draw[arr] (gsaf) -- (dmy);
+\draw[arr] (gevd) -- ++(1.0,0) |- (dmy.west);
+\draw[arr] (dmy) -- (par);
+\draw[arr] (par) -- (out);
+
+% Data sources annotation (below cast)
+\node[font=\scriptsize, text=black!55, below=2mm of cast, align=center] {
+    \textsc{ChEMBL} + \textsc{SIDER}\\
+    + evidence counts
+};
+
+\end{tikzpicture}
+\caption{End-to-end framework. A biomedical knowledge graph (left) is
+cast into three parallel weighted directed graphs, one per clinical
+dimension (efficacy, safety, evidence), using a probability-to-distance
+transformation $w(e) = -\log p(e)$. Shortest-path distances computed by
+the DMY algorithm \citep{duan2025sssp} give a $D$-dimensional cost
+vector per drug--disease pair, from which Pareto analysis selects
+non-dominated candidates. Each ranked drug is accompanied by an
+interpretable biological path through the knowledge graph.}
+\label{fig:overview}
+\end{figure}
 
 % ============================================================================
 \section{Methods}
