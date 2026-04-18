@@ -1,0 +1,4 @@
+streamlit>=1.55.0
+plotly>=6.0.0
+pandas>=2.0.0
+networkx>=3.2
