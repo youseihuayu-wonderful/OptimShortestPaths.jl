@@ -5,6 +5,7 @@
 [![CI](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/ci.yml)
 [![Documentation](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/documentation.yml/badge.svg)](https://github.com/youseihuayu-wonderful/OptimShortestPaths.jl/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://optimshortestpaths.streamlit.app)
 
 ## Problem
 
@@ -130,10 +131,13 @@ The ChemPath companion package validates the shortest-path approach on real biol
 
 All metrics computed from actual runs. AUROC via Wilcoxon-Mann-Whitney statistic; MRR via rank of true positive among candidates.
 
-**Pareto Drug Repurposing (POC v3)**: Multi-objective ranking on Hetionet with pIC50 efficacy weights and SIDER frequency-tier safety:
-- 1D AUROC (topology + efficacy): **0.7727** against PharmacotherapyDB (755 indications)
-- **4 Pareto rescues** in top-50: true treatments found by multi-objective ranking but missed by single-objective
-- Case studies: Cytarabine (rank 24→6 via RRP8), Moexipril (rank 12→5 via ACE2), Chlorambucil (rank 111→6 via GSTP1)
+**Pareto Drug Repurposing**: Multi-objective ranking on Hetionet with bias-corrected SIDER 4.1 safety scoring:
+- Best single-objective AUROC: **0.806** [95% CI 0.793–0.819] (evidence-fused efficacy)
+- Beats KGE baselines: TransE 0.571, ComplEx 0.587 (PyKEEN, same evaluation protocol)
+- 5-fold CV: **0.795 ± 0.024** (robust across disease splits)
+- **47 validated Pareto rescues** across 28/137 diseases — rank improvements up to +247 positions
+- Sensitivity: AUROC spread = 0.010 over p_base sweep (robust to hyperparameters)
+- Path length separation: Cohen's d = 1.16 (positive pairs have shorter paths)
 
 ### Case Study
 
@@ -183,7 +187,7 @@ Supports weighted sum, epsilon-constraint, and lexicographic approaches.
 julia --project=. test/runtests.jl
 ```
 
-1,981 assertions covering algorithm correctness, multi-objective optimization, domain applications, and edge cases.
+2,044 assertions covering algorithm correctness, multi-objective optimization, domain applications, and edge cases.
 
 ## Documentation
 
@@ -192,7 +196,7 @@ https://danielchen26.github.io/OptimShortestPaths.jl/stable/
 
 ## References
 
-[1] Duan, R., Mao, J., Yin, H., & Zhou, H. (2025). "Breaking the Dijkstra Barrier for Directed Single-Source Shortest-Paths via Structured Distances". *Proceedings of the 57th Annual ACM Symposium on Theory of Computing (STOC 2025)*.
+[1] Duan, R., Mao, J., Mao, X., Shu, X., & Yin, L. (2025). "Breaking the Sorting Barrier for Directed Single-Source Shortest Paths". *Proceedings of the 57th Annual ACM Symposium on Theory of Computing (STOC 2025)*. **Best Paper Award**. DOI: 10.1145/3717823.3718179
 
 ## License
 
