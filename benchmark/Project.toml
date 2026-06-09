@@ -1,0 +1,4 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+OptimShortestPaths = "665f6718-e944-491c-97a0-bc01f3ed948a"
