@@ -1,5 +1,5 @@
 """
-ChemPath — Multi-Hop Drug Discovery Dashboard v2.1
+OptimShortestPaths.jl — Multi-Hop Drug Discovery Dashboard v2.1
 
 Sidebar-driven navigation with integrated views.
 Run with: uv run streamlit run chempath/ui/dashboard.py
@@ -55,7 +55,7 @@ NODE_COLORS = {"compound": C["compound"], "target": C["target"],
 # Page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="ChemPath",
+    page_title="OptimShortestPaths.jl",
     page_icon="https://img.icons8.com/fluency/48/test-tube.png",
     layout="wide", initial_sidebar_state="expanded",
 )
@@ -159,7 +159,7 @@ def prob_color(p):
 # Sidebar — full navigation
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("## ChemPath")
+    st.markdown("## OptimShortestPaths.jl")
     st.caption("Multi-Hop Drug Discovery  |  v2.1")
     st.markdown("---")
 
@@ -628,4 +628,4 @@ Layer 3: Diseases ({n['disease']} cancer types)
 """)
 
     st.markdown("---")
-    st.caption("ChemPath v2.1 — Data: ChEMBL | Network: KEGG, STRING, DisGeNET (curated)")
+    st.caption("OptimShortestPaths.jl demo v2.1 — Data: ChEMBL | Network: KEGG, STRING, DisGeNET (curated)")

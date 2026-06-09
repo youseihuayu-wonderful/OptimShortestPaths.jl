@@ -1,5 +1,5 @@
 """
-Streamlit Cloud entry point for ChemPath Drug Discovery Dashboard.
+Streamlit Cloud entry point for OptimShortestPaths.jl (drug-discovery demo dashboard).
 
 This thin wrapper sets up paths and patches DATA_PATH so the dashboard
 works when deployed from the repo root on Streamlit Cloud.
